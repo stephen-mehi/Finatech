@@ -1,0 +1,35 @@
+# from tensorflow install guide:  https://www.tensorflow.org/install/gpu
+# check compat guide https://www.tensorflow.org/install/source#gpu
+# install cuda toolkit, drivers, and cuDNN
+# https://developer.nvidia.com/cuda-toolkit
+# https://developer.nvidia.com/cudnn
+# https://www.nvidia.com/download/index.aspx?lang=en-us
+# copy bin, include, and lib from cudNN to respective cuda tool kit  
+# restart computer
+
+# update conda in your default environment 
+conda upgrade conda
+conda upgrade --all
+# install python 3.8
+conda install -c anaconda python=3.8
+# install anaconda: https://docs.anaconda.com/anaconda/install/
+# open conda cmd line and create/active new environment
+conda create -name eth
+active eth
+# install packages
+conda install spyder
+conda install jupyter
+conda install numpy
+conda install pandas
+conda install matplotlib
+conda install seaborn
+conda install sklearn
+
+# install Tensorflow GPU version through pip. <wheel_url> can be found https://www.tensorflow.org/install/pip
+python -m pip install <wheel_url>
+
+# confirm 
+python
+import tensorflow as tf
+print(tf.test.is_built_with_cuda())
+print(tf.config.list_physical_devices('GPU')) 
