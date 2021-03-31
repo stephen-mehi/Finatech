@@ -7,14 +7,14 @@ using System.Threading.Tasks;
 
 namespace CryptoDataIngest.Models
 {
-    internal interface IIngestedDataBuffer<T>
+    internal interface IDataBuffer<T>
     {
         BlockingCollection<T> GetDataBuffer();
     }
 
-    internal class IngestedDataBuffer<T> : IIngestedDataBuffer<T>
+    internal class DataBuffer<T> : IDataBuffer<T>
     {
-        private readonly BlockingCollection<T> _dataBuffer = new BlockingCollection<T>();
+        private readonly BlockingCollection<T> _dataBuffer = new();
 
         public BlockingCollection<T> GetDataBuffer() => _dataBuffer;
     }

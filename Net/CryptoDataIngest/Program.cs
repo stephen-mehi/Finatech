@@ -1,5 +1,6 @@
 using CryptoDataIngest.Models;
 using CryptoDataIngest.Services;
+using CryptoDataIngest.Workers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using System;
@@ -23,13 +24,15 @@ namespace CryptoDataIngest
                     services
                         .AddSingleton<ICryptoDataClient, CryptoDataClient>()
                         .AddSingleton<IModelFormatter, CsvDataFormatter>()
-                        .AddSingleton<IIngestedDataBuffer<OhlcRecordBase>, IngestedDataBuffer<OhlcRecordBase>>()
-                        .AddSingleton<IIngestedDataBuffer<NormalizedOhlcRecord>, IngestedDataBuffer<NormalizedOhlcRecord>>()
+                        .AddSingleton<IDataBuffer<OhlcRecordBase>, DataBuffer<OhlcRecordBase>>()
+                        .AddSingleton<IDataBuffer<NormalizedOhlcRecord>, DataBuffer<NormalizedOhlcRecord>>()
+                        .AddSingleton<IDataBuffer<PredictedClose>, DataBuffer<PredictedClose>>()
                         .AddSingleton<ICryptoDataNormalizer, CryptoDataNormalizer>()
-                        .AddHostedService<FetchTrainingDataTask>()
-                        .AddHostedService<DataIngestWorker>()
-                        .AddHostedService<DataPreProcessingWorker>()
-                        .AddHostedService<FolderCleanUpWorker>();
+                        //.AddHostedService<FetchTrainingDataTask>()
+                        //.AddHostedService<DataIngestWorker>()
+                        //.AddHostedService<DataPreProcessingWorker>()
+                        .AddHostedService<PredictionWorker>();
+                        //.AddHostedService<FolderCleanUpWorker>();
                 });
     }
 }

@@ -65,7 +65,25 @@ namespace CryptoDataIngest.Models
             : base(date, open, high, low, close, weightedAverage, volume, quoteVolume)
         {
         }
+    }
 
+    internal class PredictedClose
+    {
+        [JsonConstructor]
+        private PredictedClose() { }
+
+        public PredictedClose(
+            double close,
+            long unixTime)
+        {
+            Close = close;
+            UnixTime = unixTime;
+        }
+
+        [JsonProperty]
+        public double Close { get; private set; }
+        [JsonProperty]
+        public long UnixTime { get; private set; }
     }
 
 }

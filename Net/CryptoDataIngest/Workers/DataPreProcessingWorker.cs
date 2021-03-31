@@ -10,7 +10,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CryptoDataIngest
+namespace CryptoDataIngest.Workers
 {
     internal class DataPreProcessingWorker : BackgroundService
     {
@@ -25,8 +25,8 @@ namespace CryptoDataIngest
 
         public DataPreProcessingWorker(
             ILogger<DataIngestWorker> logger,
-            IIngestedDataBuffer<OhlcRecordBase> bufferIn,
-            IIngestedDataBuffer<NormalizedOhlcRecord> bufferOut,
+            IDataBuffer<OhlcRecordBase> bufferIn,
+            IDataBuffer<NormalizedOhlcRecord> bufferOut,
             IModelFormatter formatter,
             ICryptoDataNormalizer normalizer)
         {
@@ -47,7 +47,7 @@ namespace CryptoDataIngest
                 Directory.CreateDirectory(_outputDir);
                 var batch = new Queue<OhlcRecordBase>();
 
-                while (!_bufferIn.IsCompleted)
+                while (!_bufferIn.IsCompleted && !stoppingToken.IsCancellationRequested)
                 {
                     OhlcRecordBase data = default;
                     bool foundData = default;

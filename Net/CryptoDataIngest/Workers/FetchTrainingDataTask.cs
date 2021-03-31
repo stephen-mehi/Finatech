@@ -10,7 +10,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CryptoDataIngest
+namespace CryptoDataIngest.Workers
 {
     internal class FetchTrainingDataTask : BackgroundService
     {
@@ -34,7 +34,9 @@ namespace CryptoDataIngest
                 (new DateTime(2019, 5, 31), new DateTime(2019, 9, 23)),
                 (new DateTime(2019, 9, 28), new DateTime(2019, 12, 23)),
                 (new DateTime(2020, 1, 23), new DateTime(2020, 3, 1)),
-                (new DateTime(2020, 3, 9), new DateTime(2020, 4, 16))
+                (new DateTime(2020, 3, 9), new DateTime(2020, 4, 16)),
+                (new DateTime(2020, 5, 12), new DateTime(2020, 10, 26))
+                //(new DateTime(2020, 11, 9), new DateTime(2021, 3, 16)),
             };
 
         public FetchTrainingDataTask(

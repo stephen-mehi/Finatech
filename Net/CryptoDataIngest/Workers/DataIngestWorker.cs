@@ -10,7 +10,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CryptoDataIngest
+namespace CryptoDataIngest.Workers
 {
     internal class DataIngestWorker : BackgroundService
     {
@@ -25,13 +25,12 @@ namespace CryptoDataIngest
         private readonly string _rootEthDir;
         private readonly string _lastTimeStampFilePath;
         private readonly long _fileExpiration = 60*60*24*5;
-        private const long _batchSize = 1000;
 
         public DataIngestWorker(
             ILogger<DataIngestWorker> logger,
             ICryptoDataClient dataClient,
             IModelFormatter dataFormatter,
-            IIngestedDataBuffer<OhlcRecordBase> bufferOut)
+            IDataBuffer<OhlcRecordBase> bufferOut)
         {
             _logger = logger;
             _dataFormatter = dataFormatter;

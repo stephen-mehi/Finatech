@@ -9,7 +9,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CryptoDataIngest
+namespace CryptoDataIngest.Workers
 {
     internal class FolderCleanUpWorker : BackgroundService
     {
