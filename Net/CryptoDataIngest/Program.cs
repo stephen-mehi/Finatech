@@ -21,18 +21,26 @@ namespace CryptoDataIngest
             Host.CreateDefaultBuilder(args)
                 .ConfigureServices((hostContext, services) =>
                 {
+
+                    var ingestBuff = new DataBuffer<OhlcRecordBase>();
+                    var preProcBuff = new DataBuffer<NormalizedOhlcRecord>();
+                    var predBuff = new DataBuffer<PredictedClose>();
+
                     services
                         .AddSingleton<ICryptoDataClient, CryptoDataClient>()
                         .AddSingleton<IModelFormatter, CsvDataFormatter>()
-                        .AddSingleton<IDataBuffer<OhlcRecordBase>, DataBuffer<OhlcRecordBase>>()
-                        .AddSingleton<IDataBuffer<NormalizedOhlcRecord>, DataBuffer<NormalizedOhlcRecord>>()
-                        .AddSingleton<IDataBuffer<PredictedClose>, DataBuffer<PredictedClose>>()
+                        .AddSingleton<IDataBufferWriter<OhlcRecordBase>>(ingestBuff)
+                        .AddSingleton<IDataBufferWriter<NormalizedOhlcRecord>>(preProcBuff)
+                        .AddSingleton<IDataBufferWriter<PredictedClose>>(predBuff)
+                        .AddSingleton<IDataBufferReader<OhlcRecordBase>>(ingestBuff)
+                        .AddSingleton<IDataBufferReader<NormalizedOhlcRecord>>(preProcBuff)
+                        .AddSingleton<IDataBufferReader<PredictedClose>>(predBuff)
                         .AddSingleton<ICryptoDataNormalizer, CryptoDataNormalizer>()
                         //.AddHostedService<FetchTrainingDataTask>()
-                        //.AddHostedService<DataIngestWorker>()
-                        //.AddHostedService<DataPreProcessingWorker>()
-                        .AddHostedService<PredictionWorker>();
-                        //.AddHostedService<FolderCleanUpWorker>();
+                        .AddHostedService<DataIngestWorker>()
+                        .AddHostedService<DataPreProcessingWorker>()
+                        .AddHostedService<PredictionWorker>()
+                        .AddHostedService<FolderCleanUpWorker>();
                 });
     }
 }

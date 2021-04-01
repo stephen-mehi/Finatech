@@ -19,18 +19,19 @@ namespace CryptoDataIngest.Workers
     {
 
         private readonly ILogger<PredictionWorker> _logger;
-        private readonly BlockingCollection<NormalizedOhlcRecord> _bufferIn;
-        private readonly BlockingCollection<PredictedClose> _bufferOut;
+        private readonly IDataBufferReader<NormalizedOhlcRecord> _bufferIn;
+        private readonly IDataBufferWriter<PredictedClose> _bufferOut;
         private readonly BaseModel _model;
         private const int _batchSize = 6;
+        private bool _disposed;
 
         public PredictionWorker(
             ILogger<PredictionWorker> logger,
-            IDataBuffer<NormalizedOhlcRecord> bufferIn,
-            IDataBuffer<PredictedClose> bufferOut)
+            IDataBufferReader<NormalizedOhlcRecord> bufferIn,
+            IDataBufferWriter<PredictedClose> bufferOut)
         {
-            _bufferIn = bufferIn.GetDataBuffer();
-            _bufferOut = bufferOut.GetDataBuffer();
+            _bufferIn = bufferIn;
+            _bufferOut = bufferOut;
             _logger = logger;
             _model = BaseModel.ModelFromJson(File.ReadAllText(@"C:\ProgramData\ETH\Model\model.json"));
             _model.LoadWeight(@"C:\ProgramData\ETH\Model\model.h5");
@@ -42,36 +43,23 @@ namespace CryptoDataIngest.Workers
             {
                 var lookBackQueue = new Queue<NormalizedOhlcRecord>();
 
-                //continue reading batches of data from api until stopped
-                while (!_bufferIn.IsCompleted && !stoppingToken.IsCancellationRequested)
+                await foreach (NormalizedOhlcRecord data in _bufferIn.GetDataAsync(stoppingToken))
                 {
-                    NormalizedOhlcRecord data = default;
-                    bool foundData = default;
+                    if (stoppingToken.IsCancellationRequested)
+                        break;
 
-                    try
+                    //add to batch
+                    lookBackQueue.Enqueue(data);
+
+                    //process if queue reaches batch size
+                    if (lookBackQueue.Count == _batchSize)
                     {
-                        foundData = _bufferIn.TryTake(out data);
-                    }
-                    //ignore taking an item if the collection is 'complete' since will just exit on next loop
-                    catch (InvalidOperationException) { }
+                        var dataInput = new NDarray(new[, ,] { { { lookBackQueue.ToList().Select(x => new[] { x.high, x.low, x.open, x.weightedAverage, x.close }).ToArray() } } });
+                        var predictions = _model.Predict(dataInput).GetData<double>();
 
-                    //operate on data if found
-                    if (!foundData)
-                        await Task.Delay(250, stoppingToken);
-                    else
-                    {
-                        //add to batch
-                        lookBackQueue.Enqueue(data);
+                        //ACT ON DATA AND PUSH INTO OUT BUFFER
 
-                        //process if queue reaches batch size
-                        if (lookBackQueue.Count == _batchSize)
-                        {
-                            var dataInput = 
-                                new NDarray(new[] { lookBackQueue.DequeueAll().Select(x => new[] { x.high, x.low, x.open, x.weightedAverage }).ToArray() });
-
-                           var predictions = _model.Predict(dataInput);
-
-                        }
+                        lookBackQueue.Dequeue();
                     }
                 }
             }
@@ -79,10 +67,29 @@ namespace CryptoDataIngest.Workers
             {
                 _logger.LogError(e, $"Failed to run OHLC data prediction. Error occurred during prediction worker loop. ");
             }
-            finally
+        }
+
+        // Public implementation of Dispose pattern callable by consumers.
+        public override void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        // Protected implementation of Dispose pattern.
+        protected virtual void Dispose(bool disposing)
+        {
+            if (_disposed)
+                return;
+
+            if (disposing)
             {
-                _bufferOut.CompleteAdding();
+                // Dispose managed state (managed objects).
+                _bufferIn.Dispose();
+                _bufferOut.Dispose();
             }
+
+            _disposed = true;
         }
     }
 }

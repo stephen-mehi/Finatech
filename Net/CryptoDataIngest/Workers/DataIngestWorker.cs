@@ -17,7 +17,7 @@ namespace CryptoDataIngest.Workers
         private readonly ILogger<DataIngestWorker> _logger;
         private readonly ICryptoDataClient _dataClient;
         private readonly IModelFormatter _dataFormatter;
-        private readonly BlockingCollection<OhlcRecordBase> _bufferOut;
+        private readonly IDataBufferWriter<OhlcRecordBase> _bufferOut;
         private readonly TimeIntervalEnum _batchInterval;
         private readonly string _cryptoSymbol;
         private readonly string _currencySymbol;
@@ -25,17 +25,18 @@ namespace CryptoDataIngest.Workers
         private readonly string _rootEthDir;
         private readonly string _lastTimeStampFilePath;
         private readonly long _fileExpiration = 60*60*24*5;
+        private bool _disposed;
 
         public DataIngestWorker(
             ILogger<DataIngestWorker> logger,
             ICryptoDataClient dataClient,
             IModelFormatter dataFormatter,
-            IDataBuffer<OhlcRecordBase> bufferOut)
+            IDataBufferWriter<OhlcRecordBase> bufferOut)
         {
             _logger = logger;
             _dataFormatter = dataFormatter;
             _dataClient = dataClient;
-            _bufferOut = bufferOut.GetDataBuffer();
+            _bufferOut = bufferOut;
 
             _batchInterval = TimeIntervalEnum.fiveMinute;
             _cryptoSymbol = "ETH";
@@ -89,7 +90,7 @@ namespace CryptoDataIngest.Workers
                     var postToBufferTask = Task.Run(() =>
                     {
                         foreach (var item in rawData)
-                            _bufferOut.Add(item, stoppingToken);
+                            _bufferOut.AddData(item, stoppingToken);
 
                     }, stoppingToken);
 
@@ -127,12 +128,28 @@ namespace CryptoDataIngest.Workers
             {
                 _logger.LogError(e, $"Failed to run OHLC data ingest. Error occurred during ingest worker loop. ");
             }
-            finally
+        }
+
+        // Public implementation of Dispose pattern callable by consumers.
+        public override void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        // Protected implementation of Dispose pattern.
+        protected virtual void Dispose(bool disposing)
+        {
+            if (_disposed)
+                return;
+
+            if (disposing)
             {
-                //always indicate the end of stream
-                _bufferOut.CompleteAdding();
+                // Dispose managed state (managed objects).
+                _bufferOut.Dispose();
             }
 
+            _disposed = true;
         }
     }
 }
