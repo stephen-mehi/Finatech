@@ -27,6 +27,7 @@ namespace CryptoDataIngest
                     var predBuff = new DataBuffer<PredictedClose>();
 
                     services
+                        .AddSingleton<GlobalConfiguration>()
                         .AddSingleton<ICryptoDataClient, CryptoDataClient>()
                         .AddSingleton<IModelFormatter, CsvDataFormatter>()
                         .AddSingleton<IDataBufferWriter<OhlcRecordBase>>(ingestBuff)
@@ -36,6 +37,7 @@ namespace CryptoDataIngest
                         .AddSingleton<IDataBufferReader<NormalizedOhlcRecord>>(preProcBuff)
                         .AddSingleton<IDataBufferReader<PredictedClose>>(predBuff)
                         .AddSingleton<ICryptoDataNormalizer, CryptoDataNormalizer>()
+                        .AddSingleton<IDataPersistence, DataPersistence>()
                         //.AddHostedService<FetchTrainingDataTask>()
                         .AddHostedService<DataIngestWorker>()
                         .AddHostedService<DataPreProcessingWorker>()

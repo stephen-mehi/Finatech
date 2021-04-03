@@ -18,34 +18,30 @@ namespace CryptoDataIngest.Workers
         private readonly IDataBufferReader<OhlcRecordBase> _bufferIn;
         private readonly IDataBufferWriter<NormalizedOhlcRecord> _bufferOut;
         private readonly ICryptoDataNormalizer _normalizer;
-        private readonly IModelFormatter _formatter;
         private readonly string _outputDir;
-        private readonly string _rootEthDir;
+        private readonly IDataPersistence _persistence;
         private bool _disposed;
 
         public DataPreProcessingWorker(
             ILogger<DataIngestWorker> logger,
             IDataBufferReader<OhlcRecordBase> bufferIn,
             IDataBufferWriter<NormalizedOhlcRecord> bufferOut,
-            IModelFormatter formatter,
-            ICryptoDataNormalizer normalizer)
+            ICryptoDataNormalizer normalizer,
+            IDataPersistence persistence,
+            GlobalConfiguration config)
         {
             _logger = logger;
             _bufferIn = bufferIn;
             _bufferOut = bufferOut;
             _normalizer = normalizer;
-            _formatter = formatter;
-
-            _rootEthDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "ETH");
-            _outputDir = Path.Combine(_rootEthDir, "NormalizedData");
+            _persistence = persistence;
+            _outputDir = config.ProcessedDataDirectory;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             try
             {
-                Directory.CreateDirectory(_outputDir);
-
                 await foreach (OhlcRecordBase data in _bufferIn.GetDataAsync(stoppingToken))
                 {
                     if (stoppingToken.IsCancellationRequested)
@@ -54,14 +50,7 @@ namespace CryptoDataIngest.Workers
                     //normalize
                     var normalizedData = _normalizer.Normalize(new List<OhlcRecordBase>() { data });
                     _bufferOut.AddData(normalizedData.FirstOrDefault(), stoppingToken);
-
-                    //format normalized data
-                    var formatted = $"{_formatter.GetHeader<NormalizedOhlcRecord>()}{Environment.NewLine}{string.Join(Environment.NewLine, _formatter.Format(normalizedData))}";
-
-                    //calculate current unix time
-                    long currentUnixTimestamp = (long)(DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1))).TotalSeconds;
-                    //write data to file
-                    await File.WriteAllTextAsync(Path.Combine(_outputDir, $"{currentUnixTimestamp}.csv"), formatted, stoppingToken);
+                    await _persistence.WriteToDirectoryAsync(_outputDir, normalizedData, stoppingToken);
                 }
             }
             catch (Exception e)

@@ -16,42 +16,39 @@ namespace CryptoDataIngest.Workers
     {
         private readonly ILogger<DataIngestWorker> _logger;
         private readonly ICryptoDataClient _dataClient;
-        private readonly IModelFormatter _dataFormatter;
         private readonly IDataBufferWriter<OhlcRecordBase> _bufferOut;
         private readonly TimeIntervalEnum _batchInterval;
+        private readonly IDataPersistence _persistence;
         private readonly string _cryptoSymbol;
         private readonly string _currencySymbol;
         private readonly string _outputDir;
         private readonly string _rootEthDir;
         private readonly string _lastTimeStampFilePath;
-        private readonly long _fileExpiration = 60*60*24*5;
         private bool _disposed;
 
         public DataIngestWorker(
             ILogger<DataIngestWorker> logger,
             ICryptoDataClient dataClient,
-            IModelFormatter dataFormatter,
-            IDataBufferWriter<OhlcRecordBase> bufferOut)
+            IDataPersistence persistence,
+            IDataBufferWriter<OhlcRecordBase> bufferOut,
+            GlobalConfiguration config)
         {
+            _persistence = persistence;
             _logger = logger;
-            _dataFormatter = dataFormatter;
             _dataClient = dataClient;
             _bufferOut = bufferOut;
 
-            _batchInterval = TimeIntervalEnum.fiveMinute;
+            _batchInterval = config.TimeInterval;
             _cryptoSymbol = "ETH";
             _currencySymbol = "USDT";
 
-            _rootEthDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "ETH");
-            _outputDir = Path.Combine(_rootEthDir, "Data");
+            _rootEthDir = config.RootDataDirectory;
+            _outputDir = config.RawDataPathDirectory;
             _lastTimeStampFilePath = Path.Combine(_rootEthDir, "LastTimeStamp.txt");
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            //create root data dir if doesn't exist
-            Directory.CreateDirectory(_outputDir);
-
             //create last timestamp file if it doesn't exist. init with 0
             if (!File.Exists(_lastTimeStampFilePath))
                 await File.WriteAllTextAsync(_lastTimeStampFilePath, "0", stoppingToken);
@@ -70,13 +67,6 @@ namespace CryptoDataIngest.Workers
                     if (lastTimeStamp == 0)
                         lastTimeStamp = currentUnixTimestamp - (int)_batchInterval;
 
-                    //get all file names and parse to unix time
-                    var fileTimeStamps =
-                        Directory
-                        .GetFiles(_outputDir)
-                        .Select(p => long.Parse(Path.GetFileNameWithoutExtension(p)))
-                        .ToList();
-
                     //end time is at most 1000*interval
                     var endTime = lastTimeStamp + (1000 * (int)_batchInterval);
                     //cieling to current time if would extend into future
@@ -94,24 +84,7 @@ namespace CryptoDataIngest.Workers
 
                     }, stoppingToken);
 
-                    //format/supplement data
-                    var formattedData = $"{string.Join(Environment.NewLine, _dataFormatter.Format(rawData))}{Environment.NewLine}";
-
-                    //try to get max 
-                    long fileTimestamp = default;
-                    long mostRecentFileTimeStamp = fileTimeStamps.DefaultIfEmpty().Max();
-
-                    //create new file with current timestamp if no previous files or if most recent file was made more than a day ago
-                    if (fileTimeStamps.Count == 0 || currentUnixTimestamp - mostRecentFileTimeStamp > _fileExpiration)
-                    {
-                        formattedData = $"{_dataFormatter.GetHeader<OhlcRecordBase>()}{Environment.NewLine}{formattedData}";
-                        fileTimestamp = currentUnixTimestamp;
-                    }
-                    else
-                        fileTimestamp = mostRecentFileTimeStamp;
-
-                    //write batch of new data to file. Create new file every day
-                    await File.AppendAllTextAsync(Path.Combine(_outputDir, $"{fileTimestamp}.csv"), formattedData, stoppingToken);
+                    await _persistence.WriteToDirectoryAsync(_outputDir, rawData, stoppingToken);
 
                     //delete old last timestamp file
                     File.Delete(_lastTimeStampFilePath);

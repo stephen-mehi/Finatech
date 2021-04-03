@@ -1,16 +1,19 @@
 ﻿using CryptoDataIngest.Models;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace CryptoDataIngest.Services
 {
     internal interface ICryptoDataNormalizer
     {
-        IEnumerable<NormalizedOhlcRecord> Normalize(IReadOnlyList<OhlcRecordBase> data);
+        IEnumerable<NormalizedOhlcRecord> NormalizeAsync(IReadOnlyList<OhlcRecordBase> data, CancellationToken ct = default);
     }
 
     internal class CryptoDataNormalizer : ICryptoDataNormalizer
@@ -18,10 +21,10 @@ namespace CryptoDataIngest.Services
 
         private static IReadOnlyList<double> NormalizeInternal(IEnumerable<double> input)
         {
-            double min = input.Min();
-            double max = input.Max();
+            var local = input.ToList();
+            double min = local.Min();
+            double max = local.Max();
             double rangeDiff = max - min;
-
             var output = input.Select(x => (x - min) / (rangeDiff)).ToList();
 
             return output;
@@ -30,7 +33,7 @@ namespace CryptoDataIngest.Services
         /// <summary>
         /// unit variance normalization according to y = (x-MIN)/MAX-MIN
         /// </summary>
-        public IEnumerable<NormalizedOhlcRecord> Normalize(IReadOnlyList<OhlcRecordBase> data)
+        public IEnumerable<NormalizedOhlcRecord> NormalizeAsync(IReadOnlyList<OhlcRecordBase> data, CancellationToken ct = default)
         {
             var opens = NormalizeInternal(data.Select(x => x.open));
             var highs = NormalizeInternal(data.Select(x => x.high));
@@ -45,13 +48,13 @@ namespace CryptoDataIngest.Services
                 var o = data[i];
                 var output =
                     new NormalizedOhlcRecord(
-                        o.date, 
+                        o.date,
                         opens[i],
-                        highs[i], 
+                        highs[i],
                         lows[i],
-                        closes[i], 
-                        volWeightedAvgs[i], 
-                        volumes[i], 
+                        closes[i],
+                        volWeightedAvgs[i],
+                        volumes[i],
                         quoteVol[i]);
 
                 yield return output;

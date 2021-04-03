@@ -22,19 +22,28 @@ namespace CryptoDataIngest.Workers
         private readonly IDataBufferReader<NormalizedOhlcRecord> _bufferIn;
         private readonly IDataBufferWriter<PredictedClose> _bufferOut;
         private readonly BaseModel _model;
-        private const int _batchSize = 6;
+        private readonly int _lookBackBatchSize;
+        private readonly TimeIntervalEnum _timeInterval;
+        private readonly IDataPersistence _persistence;
+        private readonly string _outputDir;
         private bool _disposed;
 
         public PredictionWorker(
             ILogger<PredictionWorker> logger,
             IDataBufferReader<NormalizedOhlcRecord> bufferIn,
-            IDataBufferWriter<PredictedClose> bufferOut)
+            IDataBufferWriter<PredictedClose> bufferOut,
+            GlobalConfiguration config,
+            IDataPersistence persistence)
         {
+            _persistence = persistence;
+            _timeInterval = config.TimeInterval;
+            _lookBackBatchSize = config.LookBackBatchSize;
             _bufferIn = bufferIn;
             _bufferOut = bufferOut;
             _logger = logger;
             _model = BaseModel.ModelFromJson(File.ReadAllText(@"C:\ProgramData\ETH\Model\model.json"));
             _model.LoadWeight(@"C:\ProgramData\ETH\Model\model.h5");
+            _outputDir = config.PredictionDataDirectory;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -52,14 +61,39 @@ namespace CryptoDataIngest.Workers
                     lookBackQueue.Enqueue(data);
 
                     //process if queue reaches batch size
-                    if (lookBackQueue.Count == _batchSize)
+                    if (lookBackQueue.Count == _lookBackBatchSize)
                     {
-                        var dataInput = new NDarray(new[, ,] { { { lookBackQueue.ToList().Select(x => new[] { x.high, x.low, x.open, x.weightedAverage, x.close }).ToArray() } } });
-                        var predictions = _model.Predict(dataInput).GetData<double>();
+                        //copy lookback timesteps
+                        var localLookBack = lookBackQueue.ToList();
 
-                        //ACT ON DATA AND PUSH INTO OUT BUFFER
+                        var inputData = localLookBack.Select(x => new { x.high, x.low, x.open, x.weightedAverage, x.close });
+                        //init 3d array 
+                        var inputDataArray =  new double[1, _lookBackBatchSize, 5];
 
+                        //assign values to array
+                        int index = 0;
+                        foreach (var item in inputData)
+                        {
+                            inputDataArray[0, index, 0] = item.high;
+                            inputDataArray[0, index, 1] = item.low;
+                            inputDataArray[0, index, 2] = item.open;
+                            inputDataArray[0, index, 3] = item.weightedAverage;
+                            inputDataArray[0, index, 4] = item.close;
+                            index++;
+                        }
+
+                        //predict and get last column, i.e. the close price
+                        var closePrediction = _model.Predict(new NDarray(inputDataArray)).GetData<double>().Last();
+                        //calculate the unix time associated with prediction
+                        long predictionUnixTime = localLookBack.Last().date + (int)_timeInterval;
+                        var closePredictionModel = new PredictedClose(closePrediction, predictionUnixTime);
+                        //post to out buffer
+                        _bufferOut.AddData(closePredictionModel);
+                        //dequeue oldest look back data point. Keep in mind look back data are processed with sliding window approach
                         lookBackQueue.Dequeue();
+
+                        //write to file
+                        await _persistence.WriteToDirectoryAsync(_outputDir, new List<PredictedClose>() { closePredictionModel }, stoppingToken);
                     }
                 }
             }
