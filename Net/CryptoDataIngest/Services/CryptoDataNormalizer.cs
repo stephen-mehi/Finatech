@@ -13,7 +13,7 @@ namespace CryptoDataIngest.Services
 {
     internal interface ICryptoDataNormalizer
     {
-        IEnumerable<NormalizedOhlcRecord> NormalizeAsync(IReadOnlyList<OhlcRecordBase> data, CancellationToken ct = default);
+        IEnumerable<NormalizedOhlcRecord> Normalize(IReadOnlyList<OhlcRecordBase> data, CancellationToken ct = default);
     }
 
     internal class CryptoDataNormalizer : ICryptoDataNormalizer
@@ -33,7 +33,7 @@ namespace CryptoDataIngest.Services
         /// <summary>
         /// unit variance normalization according to y = (x-MIN)/MAX-MIN
         /// </summary>
-        public IEnumerable<NormalizedOhlcRecord> NormalizeAsync(IReadOnlyList<OhlcRecordBase> data, CancellationToken ct = default)
+        public IEnumerable<NormalizedOhlcRecord> Normalize(IReadOnlyList<OhlcRecordBase> data, CancellationToken ct = default)
         {
             var opens = NormalizeInternal(data.Select(x => x.open));
             var highs = NormalizeInternal(data.Select(x => x.high));
