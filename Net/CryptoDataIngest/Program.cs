@@ -38,6 +38,7 @@ namespace CryptoDataIngest
                         .AddSingleton<IDataBufferReader<PredictedClose>>(predBuff)
                         .AddSingleton<ICryptoDataNormalizer, CryptoDataNormalizer>()
                         .AddSingleton<IDataPersistence, DataPersistence>()
+                        .AddSingleton<ITradingClientProvider, TradingClientProvider>()
                         //.AddHostedService<FetchTrainingDataTask>()
                         .AddHostedService<DataIngestWorker>()
                         .AddHostedService<DataPreProcessingWorker>()
