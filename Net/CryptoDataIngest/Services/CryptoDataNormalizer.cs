@@ -13,35 +13,54 @@ namespace CryptoDataIngest.Services
 {
     internal interface ICryptoDataNormalizer
     {
-        IEnumerable<NormalizedOhlcRecord> Normalize(IReadOnlyList<OhlcRecordBase> data, CancellationToken ct = default);
+        IEnumerable<NormalizedOhlcRecord> Normalize(IReadOnlyList<OhlcRecordBase> data);
+        IEnumerable<double> DenormalizeClose(IReadOnlyList<double> data);
     }
 
     internal class CryptoDataNormalizer : ICryptoDataNormalizer
     {
+        private readonly OhlcRecordBase _min;
+        private readonly OhlcRecordBase _max;
 
-        private static IReadOnlyList<double> NormalizeInternal(IEnumerable<double> input)
+        public CryptoDataNormalizer(
+            MinMaxModel minMaxModel)
         {
-            var local = input.ToList();
-            double min = local.Min();
-            double max = local.Max();
+            _min = minMaxModel.Minimum;
+            _max = minMaxModel.Maximum;
+        }
+
+        private static IReadOnlyList<double> NormalizeInternal(IEnumerable<double> input, double min, double max)
+        {
             double rangeDiff = max - min;
             var output = input.Select(x => (x - min) / (rangeDiff)).ToList();
-
             return output;
+        }
+
+        private static IReadOnlyList<double> DenormalizeInternal(IEnumerable<double> input, double min, double max)
+        {
+            double rangeDiff = max - min;
+            var output = input.Select(x => (x * rangeDiff) + min).ToList();
+            return output;
+        }
+
+        public IEnumerable<double> DenormalizeClose(IReadOnlyList<double> closeData)
+        {
+            var closes = DenormalizeInternal(closeData, _min.close, _max.close);
+            return closes;
         }
 
         /// <summary>
         /// unit variance normalization according to y = (x-MIN)/MAX-MIN
         /// </summary>
-        public IEnumerable<NormalizedOhlcRecord> Normalize(IReadOnlyList<OhlcRecordBase> data, CancellationToken ct = default)
+        public IEnumerable<NormalizedOhlcRecord> Normalize(IReadOnlyList<OhlcRecordBase> data)
         {
-            var opens = NormalizeInternal(data.Select(x => x.open));
-            var highs = NormalizeInternal(data.Select(x => x.high));
-            var lows = NormalizeInternal(data.Select(x => x.low));
-            var closes = NormalizeInternal(data.Select(x => x.close));
-            var volWeightedAvgs = NormalizeInternal(data.Select(x => x.weightedAverage));
-            var volumes = NormalizeInternal(data.Select(x => x.volume));
-            var quoteVol = NormalizeInternal(data.Select(x => x.quoteVolume));
+            var opens = NormalizeInternal(data.Select(x => x.open), _min.open, _max.open);
+            var highs = NormalizeInternal(data.Select(x => x.high), _min.high, _max.high);
+            var lows = NormalizeInternal(data.Select(x => x.low), _min.low, _max.low);
+            var closes = NormalizeInternal(data.Select(x => x.close), _min.close, _max.close);
+            var volWeightedAvgs = NormalizeInternal(data.Select(x => x.weightedAverage), _min.weightedAverage, _max.weightedAverage);
+            var volumes = NormalizeInternal(data.Select(x => x.volume), _min.volume, _max.volume);
+            var quoteVol = NormalizeInternal(data.Select(x => x.quoteVolume), _min.quoteVolume, _max.quoteVolume);
 
             for (int i = 0; i < data.Count; i++)
             {

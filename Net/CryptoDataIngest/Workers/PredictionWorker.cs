@@ -25,6 +25,7 @@ namespace CryptoDataIngest.Workers
         private readonly int _lookBackBatchSize;
         private readonly TimeIntervalEnum _timeInterval;
         private readonly IDataPersistence _persistence;
+        private readonly ICryptoDataNormalizer _normalizer;
         private readonly string _outputDir;
         private bool _disposed;
 
@@ -33,8 +34,10 @@ namespace CryptoDataIngest.Workers
             IDataBufferReader<NormalizedOhlcRecord> bufferIn,
             IDataBufferWriter<PredictedClose> bufferOut,
             GlobalConfiguration config,
-            IDataPersistence persistence)
+            IDataPersistence persistence,
+            ICryptoDataNormalizer normalizer)
         {
+            _normalizer = normalizer;
             _persistence = persistence;
             _timeInterval = config.TimeInterval;
             _lookBackBatchSize = config.LookBackBatchSize;
@@ -48,27 +51,28 @@ namespace CryptoDataIngest.Workers
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            try
-            {
-                var lookBackQueue = new Queue<NormalizedOhlcRecord>();
 
-                await foreach (NormalizedOhlcRecord data in _bufferIn.GetDataAsync(stoppingToken))
+            var lookBackQueue = new Queue<NormalizedOhlcRecord>();
+
+            await foreach (var dataPoint in _bufferIn.GetDataAsync(stoppingToken))
+            {
+                try
                 {
                     if (stoppingToken.IsCancellationRequested)
                         break;
 
                     //add to batch
-                    lookBackQueue.Enqueue(data);
+                    lookBackQueue.Enqueue(dataPoint);
 
                     //process if queue reaches batch size
                     if (lookBackQueue.Count == _lookBackBatchSize)
                     {
                         //copy lookback timesteps
-                        var localLookBack = lookBackQueue.ToList();
+                        var localLookBack = lookBackQueue.DequeueAll().ToList();
 
                         var inputData = localLookBack.Select(x => new { x.high, x.low, x.open, x.weightedAverage, x.close });
                         //init 3d array 
-                        var inputDataArray =  new double[1, _lookBackBatchSize, 5];
+                        var inputDataArray = new double[1, _lookBackBatchSize, 5];
 
                         //assign values to array
                         int index = 0;
@@ -83,23 +87,27 @@ namespace CryptoDataIngest.Workers
                         }
 
                         //predict and get last column, i.e. the close price
-                        var closePrediction = _model.Predict(new NDarray(inputDataArray)).GetData<double>().Last();
+                        var predictions = _model.Predict(new NDarray(inputDataArray));
+                        var predictionData = predictions.GetData<float>();
+                        var closePrediction = predictionData[4];
                         //calculate the unix time associated with prediction
                         long predictionUnixTime = localLookBack.Last().date + (int)_timeInterval;
-                        var closePredictionModel = new PredictedClose(closePrediction, predictionUnixTime);
+
+                        var denormalizedClose = _normalizer.DenormalizeClose(new List<double>() { closePrediction }).Single();
+
+                        var closePredictionModel = new PredictedClose(denormalizedClose, predictionUnixTime);
+
                         //post to out buffer
-                        _bufferOut.AddData(closePredictionModel);
-                        //dequeue oldest look back data point. Keep in mind look back data are processed with sliding window approach
-                        lookBackQueue.Dequeue();
+                        _bufferOut.AddData(closePredictionModel, stoppingToken);
 
                         //write to file
                         await _persistence.WriteToDirectoryAsync(_outputDir, new List<PredictedClose>() { closePredictionModel }, stoppingToken);
                     }
                 }
-            }
-            catch (Exception e)
-            {
-                _logger.LogError(e, $"Failed to run OHLC data prediction. Error occurred during prediction worker loop. ");
+                catch (Exception e)
+                {
+                    _logger.LogError(e, $"Failed to run OHLC data prediction. Error occurred during prediction worker loop. ");
+                }
             }
         }
 

@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using CryptoDataIngest.Services;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -49,7 +50,6 @@ namespace CryptoDataIngest.Models
         [JsonProperty]
         public double quoteVolume { get; private set; }
     }
-
 
     internal class NormalizedOhlcRecord : OhlcRecordBase
     {

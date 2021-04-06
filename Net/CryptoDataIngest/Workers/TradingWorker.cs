@@ -27,7 +27,10 @@ namespace CryptoDataIngest.Workers
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
+            await foreach (var item in _bufferIn.GetDataAsync(stoppingToken))
+            {
 
+            }
         }
     }
 }

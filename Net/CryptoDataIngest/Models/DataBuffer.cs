@@ -41,7 +41,7 @@ namespace CryptoDataIngest.Models
                 if (foundData)
                     yield return data;
                 else
-                    await Task.Delay(200, ct);
+                    await Task.Delay(500, ct);
             }
         }
 

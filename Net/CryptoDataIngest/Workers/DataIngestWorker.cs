@@ -53,19 +53,20 @@ namespace CryptoDataIngest.Workers
             if (!File.Exists(_lastTimeStampFilePath))
                 await File.WriteAllTextAsync(_lastTimeStampFilePath, "0", stoppingToken);
 
-            try
+
+            //continue reading batches of data from api until stopped
+            while (!stoppingToken.IsCancellationRequested)
             {
-                //continue reading batches of data from api until stopped
-                while (!stoppingToken.IsCancellationRequested)
+                try
                 {
                     //calculate current unix time
                     long currentUnixTimestamp = (long)(DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1))).TotalSeconds;
 
                     //read last logged data timestamp
                     long lastTimeStamp = long.Parse(File.ReadAllText(_lastTimeStampFilePath));
-                    //if no last ts, just grap last intervals worth
+                    //if no last ts, just grab last intervals worth, with buffer time to ensure data grabbed
                     if (lastTimeStamp == 0)
-                        lastTimeStamp = currentUnixTimestamp - (int)_batchInterval;
+                        lastTimeStamp = currentUnixTimestamp - (int)_batchInterval - 60;
 
                     //end time is at most 1000*interval
                     var endTime = lastTimeStamp + (1000 * (int)_batchInterval);
@@ -74,33 +75,35 @@ namespace CryptoDataIngest.Workers
                         endTime = currentUnixTimestamp;
 
                     //fetch batch of data filtering for data occuring after last logged timestamp
-                    var rawData = await _dataClient.GetDataAsync(_cryptoSymbol, _currencySymbol, _batchInterval, lastTimeStamp, endTime,  stoppingToken);
+                    var rawData = await _dataClient.GetDataAsync(_cryptoSymbol, _currencySymbol, _batchInterval, lastTimeStamp, endTime, stoppingToken);
+                    //filter out bad data
+                    var cleanedData = rawData.Where(x => x.date != 0);
 
-                    //post data to buffer on thread
-                    var postToBufferTask = Task.Run(() =>
+                    //only process and post if some data found
+                    if (cleanedData.Any())
                     {
-                        foreach (var item in rawData)
+                        //post to out buffer
+                        foreach (var item in cleanedData)
                             _bufferOut.AddData(item, stoppingToken);
 
-                    }, stoppingToken);
+                        await _persistence.WriteToDirectoryAsync(_outputDir, cleanedData, stoppingToken);
 
-                    await _persistence.WriteToDirectoryAsync(_outputDir, rawData, stoppingToken);
+                        //delete old last timestamp file
+                        File.Delete(_lastTimeStampFilePath);
+                        //create new one with last data timestamp read
+                        await File.WriteAllTextAsync(_lastTimeStampFilePath, endTime.ToString(), stoppingToken);
+                    }
 
-                    //delete old last timestamp file
-                    File.Delete(_lastTimeStampFilePath);
-                    //create new one with last data timestamp read
-                    await File.WriteAllTextAsync(_lastTimeStampFilePath, endTime.ToString(), stoppingToken);
+                    //check every 30 seconds for new data 
+                    await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
 
-                    //finally await buffer posting
-                    await postToBufferTask;
-
-                    await Task.Delay(TimeSpan.FromSeconds((int)_batchInterval), stoppingToken);
+                }
+                catch (Exception e)
+                {
+                    _logger.LogError(e, $"Failed to run OHLC data ingest. Error occurred during ingest worker loop. ");
                 }
             }
-            catch (Exception e)
-            {
-                _logger.LogError(e, $"Failed to run OHLC data ingest. Error occurred during ingest worker loop. ");
-            }
+
         }
 
         // Public implementation of Dispose pattern callable by consumers.

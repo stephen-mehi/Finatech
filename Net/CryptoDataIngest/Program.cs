@@ -3,8 +3,10 @@ using CryptoDataIngest.Services;
 using CryptoDataIngest.Workers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -21,13 +23,17 @@ namespace CryptoDataIngest
             Host.CreateDefaultBuilder(args)
                 .ConfigureServices((hostContext, services) =>
                 {
-
+                    //init buffers
                     var ingestBuff = new DataBuffer<OhlcRecordBase>();
                     var preProcBuff = new DataBuffer<NormalizedOhlcRecord>();
                     var predBuff = new DataBuffer<PredictedClose>();
 
+                    var config = new GlobalConfiguration();
+
+                    bool trainingIngest = false;
+
                     services
-                        .AddSingleton<GlobalConfiguration>()
+                        .AddSingleton(config)
                         .AddSingleton<ICryptoDataClient, CryptoDataClient>()
                         .AddSingleton<IModelFormatter, CsvDataFormatter>()
                         .AddSingleton<IDataBufferWriter<OhlcRecordBase>>(ingestBuff)
@@ -36,14 +42,28 @@ namespace CryptoDataIngest
                         .AddSingleton<IDataBufferReader<OhlcRecordBase>>(ingestBuff)
                         .AddSingleton<IDataBufferReader<NormalizedOhlcRecord>>(preProcBuff)
                         .AddSingleton<IDataBufferReader<PredictedClose>>(predBuff)
-                        .AddSingleton<ICryptoDataNormalizer, CryptoDataNormalizer>()
                         .AddSingleton<IDataPersistence, DataPersistence>()
-                        .AddSingleton<ITradingClientProvider, TradingClientProvider>()
-                        //.AddHostedService<FetchTrainingDataTask>()
-                        .AddHostedService<DataIngestWorker>()
-                        .AddHostedService<DataPreProcessingWorker>()
-                        .AddHostedService<PredictionWorker>()
-                        .AddHostedService<FolderCleanUpWorker>();
+                        .AddSingleton<ITradingClientProvider, TradingClientProvider>();
+
+
+                    if (trainingIngest)
+                    {
+                        services
+                            .AddHostedService<FetchTrainingDataTask>();
+                    }
+                    else
+                    {
+                        //get global max and min 
+                        var minMaxData = JsonConvert.DeserializeObject<MinMaxModel>(File.ReadAllText(config.MinMaxDataPath));
+                        services
+                            .AddSingleton(minMaxData)
+                            .AddSingleton<ICryptoDataNormalizer>(new CryptoDataNormalizer(minMaxData))
+                            .AddHostedService<DataIngestWorker>()
+                            .AddHostedService<DataPreProcessingWorker>()
+                            .AddHostedService<PredictionWorker>()
+                            .AddHostedService<TradingWorker>()
+                            .AddHostedService<FolderCleanUpWorker>();
+                    }
                 });
     }
 }

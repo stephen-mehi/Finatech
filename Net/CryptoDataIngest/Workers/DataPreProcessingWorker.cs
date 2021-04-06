@@ -20,6 +20,7 @@ namespace CryptoDataIngest.Workers
         private readonly ICryptoDataNormalizer _normalizer;
         private readonly string _outputDir;
         private readonly IDataPersistence _persistence;
+        private readonly int _lookBackBatchSize;
         private bool _disposed;
 
         public DataPreProcessingWorker(
@@ -36,26 +37,46 @@ namespace CryptoDataIngest.Workers
             _normalizer = normalizer;
             _persistence = persistence;
             _outputDir = config.ProcessedDataDirectory;
+            _lookBackBatchSize = config.LookBackBatchSize;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            try
+            var lookBackQueue = new Queue<OhlcRecordBase>();
+
+            await foreach (OhlcRecordBase data in _bufferIn.GetDataAsync(stoppingToken))
             {
-                await foreach (OhlcRecordBase data in _bufferIn.GetDataAsync(stoppingToken))
+                try
                 {
                     if (stoppingToken.IsCancellationRequested)
                         break;
 
-                    //normalize
-                    var normalizedData = _normalizer.Normalize(new List<OhlcRecordBase>() { data });
-                    _bufferOut.AddData(normalizedData.FirstOrDefault(), stoppingToken);
-                    await _persistence.WriteToDirectoryAsync(_outputDir, normalizedData, stoppingToken);
+                    //add to batch
+                    lookBackQueue.Enqueue(data);
+
+                    //process if queue reaches batch size
+                    if (lookBackQueue.Count == _lookBackBatchSize)
+                    {
+                        //copy queue locally
+                        var localLookBack = lookBackQueue.ToList();
+                        //normalize
+                        var normalizedData = _normalizer.Normalize(localLookBack).ToList();
+
+                        //post to buffer
+                        foreach (var item in normalizedData)
+                            _bufferOut.AddData(item, stoppingToken);
+
+                        //write to file
+                        await _persistence.WriteToDirectoryAsync(_outputDir, normalizedData, stoppingToken);
+
+                        //remove one for sliding window
+                        lookBackQueue.Dequeue();
+                    }
                 }
-            }
-            catch (Exception e)
-            {
-                _logger.LogError(e, $"Failed to run OHLC data preprocessing. Error occurred during preprocessing worker loop. ");
+                catch (Exception e)
+                {
+                    _logger.LogError(e, $"Failed to run OHLC data preprocessing. Error occurred during preprocessing worker loop. ");
+                }
             }
         }
 

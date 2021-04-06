@@ -13,17 +13,17 @@ namespace CryptoDataIngest.Models
         private MinMaxModel() { }
 
         public MinMaxModel(
-            double min,
-            double max)
+            OhlcRecordBase min,
+            OhlcRecordBase max)
         {
             Minimum = min;
             Maximum = max;
         }
 
         [JsonProperty]
-        public double Minimum { get; private set; }
+        public OhlcRecordBase Minimum { get; private set; }
         [JsonProperty]
-        public double Maximum { get; private set; }
+        public OhlcRecordBase Maximum { get; private set; }
 
     }
 }
