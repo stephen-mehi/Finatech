@@ -23,13 +23,14 @@ namespace CryptoDataIngest.Workers
         {
             _logger = logger;
             _bufferIn = bufferIn;
+            //_tradingClient = tradingClient;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            await foreach (var item in _bufferIn.GetDataAsync(stoppingToken))
+            await foreach (var prediction in _bufferIn.GetDataAsync(stoppingToken))
             {
-
+                //if()
             }
         }
     }

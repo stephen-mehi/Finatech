@@ -94,8 +94,8 @@ namespace CryptoDataIngest.Workers
                         await File.WriteAllTextAsync(_lastTimeStampFilePath, endTime.ToString(), stoppingToken);
                     }
 
-                    //check every 30 seconds for new data 
-                    await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+                    //check every 60 seconds for new data 
+                    await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken);
 
                 }
                 catch (Exception e)

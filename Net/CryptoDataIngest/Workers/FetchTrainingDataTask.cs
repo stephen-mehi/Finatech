@@ -25,20 +25,8 @@ namespace CryptoDataIngest.Workers
         private readonly string _outputPath;
         private readonly string _minMaxDir;
         private readonly string _minMaxPath;
+        private IReadOnlyList<(DateTime start, DateTime end)> _dataTimeRanges;
         private const int _batchSize = 500;
-
-        private IReadOnlyList<(DateTime start, DateTime end)> _trainingDataTimePeriods =
-            new List<(DateTime start, DateTime end)>()
-            {
-                (new DateTime(2018, 5, 29), new DateTime(2018, 12, 31)),
-                (new DateTime(2019, 1, 12), new DateTime(2019, 4, 14)),
-                (new DateTime(2019, 5, 31), new DateTime(2019, 9, 23)),
-                (new DateTime(2019, 9, 28), new DateTime(2019, 12, 23)),
-                (new DateTime(2020, 1, 23), new DateTime(2020, 3, 1)),
-                (new DateTime(2020, 3, 9), new DateTime(2020, 4, 16)),
-                (new DateTime(2020, 5, 12), new DateTime(2020, 10, 26))
-                //(new DateTime(2020, 11, 9), new DateTime(2021, 3, 16)),
-            };
 
         public FetchTrainingDataTask(
             ILogger<DataIngestWorker> logger,
@@ -58,6 +46,7 @@ namespace CryptoDataIngest.Workers
             _outputPath = config.TrainingDataPath;
             _minMaxDir = Path.GetDirectoryName(config.MinMaxDataPath);
             _minMaxPath = config.MinMaxDataPath;
+            _dataTimeRanges = config.TrainingDataTimePeriods;
 
         }
 
@@ -83,7 +72,7 @@ namespace CryptoDataIngest.Workers
 
                 var rawData = new List<OhlcRecordBase>();
 
-                foreach (var (start, end) in _trainingDataTimePeriods)
+                foreach (var (start, end) in _dataTimeRanges)
                 {
                     long unixStart = (long)start.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
                     long unixEnd = (long)end.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;

@@ -4,6 +4,8 @@ using CryptoDataIngest.Workers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Newtonsoft.Json;
+using Numpy;
+using Python.Runtime;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -23,6 +25,9 @@ namespace CryptoDataIngest
             Host.CreateDefaultBuilder(args)
                 .ConfigureServices((hostContext, services) =>
                 {
+                    np.arange(1);
+                    PythonEngine.BeginAllowThreads();
+
                     //init buffers
                     var ingestBuff = new DataBuffer<OhlcRecordBase>();
                     var preProcBuff = new DataBuffer<NormalizedOhlcRecord>();

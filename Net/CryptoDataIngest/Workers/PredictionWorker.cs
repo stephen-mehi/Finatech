@@ -12,6 +12,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Numpy;
+using Python.Runtime;
 
 namespace CryptoDataIngest.Workers
 {
@@ -44,8 +45,11 @@ namespace CryptoDataIngest.Workers
             _bufferIn = bufferIn;
             _bufferOut = bufferOut;
             _logger = logger;
-            _model = BaseModel.ModelFromJson(File.ReadAllText(@"C:\ProgramData\ETH\Model\model.json"));
-            _model.LoadWeight(@"C:\ProgramData\ETH\Model\model.h5");
+            using (Py.GIL())
+            {
+                _model = BaseModel.ModelFromJson(File.ReadAllText(@"C:\ProgramData\ETH\Model\model.json"));
+                _model.LoadWeight(@"C:\ProgramData\ETH\Model\model.h5");
+            }
             _outputDir = config.PredictionDataDirectory;
         }
 
@@ -68,7 +72,7 @@ namespace CryptoDataIngest.Workers
                     if (lookBackQueue.Count == _lookBackBatchSize)
                     {
                         //copy lookback timesteps
-                        var localLookBack = lookBackQueue.DequeueAll().ToList();
+                        var localLookBack = lookBackQueue.DequeueMany(_lookBackBatchSize).ToList();
 
                         var inputData = localLookBack.Select(x => new { x.high, x.low, x.open, x.weightedAverage, x.close });
                         //init 3d array 
@@ -87,21 +91,24 @@ namespace CryptoDataIngest.Workers
                         }
 
                         //predict and get last column, i.e. the close price
-                        var predictions = _model.Predict(new NDarray(inputDataArray));
-                        var predictionData = predictions.GetData<float>();
-                        var closePrediction = predictionData[4];
-                        //calculate the unix time associated with prediction
-                        long predictionUnixTime = localLookBack.Last().date + (int)_timeInterval;
+                        using (Py.GIL())
+                        {
+                            var predictions = _model.Predict(new NDarray(inputDataArray));
+                            var predictionData = predictions.GetData<float>();
+                            var closePrediction = predictionData[4];
+                            //calculate the unix time associated with prediction
+                            long predictionUnixTime = localLookBack.Last().date + (int)_timeInterval;
 
-                        var denormalizedClose = _normalizer.DenormalizeClose(new List<double>() { closePrediction }).Single();
+                            var denormalizedClose = _normalizer.DenormalizeClose(new List<double>() { closePrediction }).Single();
 
-                        var closePredictionModel = new PredictedClose(denormalizedClose, predictionUnixTime);
+                            var closePredictionModel = new PredictedClose(denormalizedClose, predictionUnixTime);
 
-                        //post to out buffer
-                        _bufferOut.AddData(closePredictionModel, stoppingToken);
+                            //post to out buffer
+                            _bufferOut.AddData(closePredictionModel, stoppingToken);
 
-                        //write to file
-                        await _persistence.WriteToDirectoryAsync(_outputDir, new List<PredictedClose>() { closePredictionModel }, stoppingToken);
+                            //write to file
+                            await _persistence.WriteToDirectoryAsync(_outputDir, new List<PredictedClose>() { closePredictionModel }, stoppingToken);
+                        }
                     }
                 }
                 catch (Exception e)
@@ -129,6 +136,7 @@ namespace CryptoDataIngest.Workers
                 // Dispose managed state (managed objects).
                 _bufferIn.Dispose();
                 _bufferOut.Dispose();
+                _model.Dispose();
             }
 
             _disposed = true;
