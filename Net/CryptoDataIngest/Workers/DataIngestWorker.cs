@@ -95,12 +95,13 @@ namespace CryptoDataIngest.Workers
                     }
 
                     //check every 60 seconds for new data 
-                    await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken);
+                    await Task.Delay(TimeSpan.FromSeconds(90), stoppingToken);
 
                 }
                 catch (Exception e)
                 {
                     _logger.LogError(e, $"Failed to run OHLC data ingest. Error occurred during ingest worker loop. ");
+                    await Task.Delay(5000, stoppingToken);
                 }
             }
 

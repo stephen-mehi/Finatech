@@ -76,6 +76,7 @@ namespace CryptoDataIngest.Workers
                 catch (Exception e)
                 {
                     _logger.LogError(e, $"Failed to run OHLC data preprocessing. Error occurred during preprocessing worker loop. ");
+                    await Task.Delay(5000, stoppingToken);
                 }
             }
         }

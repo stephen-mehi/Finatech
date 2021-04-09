@@ -39,7 +39,6 @@ namespace CryptoDataIngest
 
                     services
                         .AddSingleton(config)
-                        .AddSingleton<ICryptoDataClient, CryptoDataClient>()
                         .AddSingleton<IModelFormatter, CsvDataFormatter>()
                         .AddSingleton<IDataBufferWriter<OhlcRecordBase>>(ingestBuff)
                         .AddSingleton<IDataBufferWriter<NormalizedOhlcRecord>>(preProcBuff)
@@ -48,6 +47,7 @@ namespace CryptoDataIngest
                         .AddSingleton<IDataBufferReader<NormalizedOhlcRecord>>(preProcBuff)
                         .AddSingleton<IDataBufferReader<PredictedClose>>(predBuff)
                         .AddSingleton<IDataPersistence, DataPersistence>()
+                        .AddSingleton<ICryptoDataClient, CryptoDataClient>()
                         .AddSingleton<ITradingClientProvider, TradingClientProvider>();
 
 

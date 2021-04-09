@@ -24,12 +24,12 @@ namespace CryptoDataIngest.Models
 
         public TradingClient(
             string apiKey, 
-            string apiSecret, 
-            string password,
+            string secret, 
+            string passphrase,
             ICoinbaseProHttpClient httpClient, 
             bool sandbox)
         {
-            var authenticator = new Authenticator(apiKey, apiSecret, password);
+            var authenticator = new Authenticator(apiKey, secret, passphrase);
             _client = new CoinbaseProClient(authenticator, httpClient, sandbox);
         }
 

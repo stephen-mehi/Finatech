@@ -16,7 +16,11 @@ namespace CryptoDataIngest.Models
     {
         public ITradingClient GetClient(bool isSandbox)
         {
-            var client = new TradingClient("api key", "api secret", "password", new CoinbaseProHttpClient(), true);
+            string phrase = Environment.GetEnvironmentVariable("CBP_PHRASE", EnvironmentVariableTarget.Machine);
+            string secret = Environment.GetEnvironmentVariable("CBP_SECRET", EnvironmentVariableTarget.Machine);
+            string key = Environment.GetEnvironmentVariable("CBP_KEY", EnvironmentVariableTarget.Machine);
+
+            var client = new TradingClient(key, secret, phrase, new CoinbaseProHttpClient(), true);
             return client;
         }
     }

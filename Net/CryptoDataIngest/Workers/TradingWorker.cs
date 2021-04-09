@@ -19,11 +19,12 @@ namespace CryptoDataIngest.Workers
 
         public TradingWorker(
             ILogger<TradingWorker> logger,
-            IDataBufferReader<PredictedClose> bufferIn)
+            IDataBufferReader<PredictedClose> bufferIn,
+            ITradingClientProvider tradingClientProv)
         {
             _logger = logger;
             _bufferIn = bufferIn;
-            //_tradingClient = tradingClient;
+            _tradingClient = tradingClientProv.GetClient(true);
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)

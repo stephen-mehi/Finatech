@@ -114,6 +114,7 @@ namespace CryptoDataIngest.Workers
                 catch (Exception e)
                 {
                     _logger.LogError(e, $"Failed to run OHLC data prediction. Error occurred during prediction worker loop. ");
+                    await Task.Delay(5000, stoppingToken);
                 }
             }
         }
