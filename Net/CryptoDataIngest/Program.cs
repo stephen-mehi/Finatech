@@ -30,25 +30,23 @@ namespace CryptoDataIngest
 
                     //init buffers
                     var modelBuff = new DataBuffer<ModelSource>();
-                    var sourceBuff = new DataBuffer<SourceOhlcRecordBase>();
+                    var sourceBuff = new DataBuffer<OhlcRecordBaseBatch>();
                     var ingestBuff = new DataBuffer<OhlcRecordBase>();
                     var preProcBuff = new DataBuffer<ScaledOhlcRecord>();
                     var predBuff = new DataBuffer<PredictedClose>();
 
                     var config = new GlobalConfiguration();
 
-                    bool trainingIngest = false;
-
                     services
                         .AddSingleton(config)
                         .AddSingleton<IModelFormatter, CsvDataFormatter>()
                         .AddSingleton<IDataBufferWriter<ModelSource>>(modelBuff)
-                        .AddSingleton<IDataBufferWriter<SourceOhlcRecordBase>>(sourceBuff)
+                        .AddSingleton<IDataBufferWriter<OhlcRecordBaseBatch>>(sourceBuff)
                         .AddSingleton<IDataBufferWriter<OhlcRecordBase>>(ingestBuff)
                         .AddSingleton<IDataBufferWriter<ScaledOhlcRecord>>(preProcBuff)
                         .AddSingleton<IDataBufferWriter<PredictedClose>>(predBuff)
                         .AddSingleton<IDataBufferReader<ModelSource>>(modelBuff)
-                        .AddSingleton<IDataBufferReader<SourceOhlcRecordBase>>(sourceBuff)
+                        .AddSingleton<IDataBufferReader<OhlcRecordBaseBatch>>(sourceBuff)
                         .AddSingleton<IDataBufferReader<OhlcRecordBase>>(ingestBuff)
                         .AddSingleton<IDataBufferReader<ScaledOhlcRecord>>(preProcBuff)
                         .AddSingleton<IDataBufferReader<PredictedClose>>(predBuff)
@@ -56,25 +54,15 @@ namespace CryptoDataIngest
                         .AddSingleton<ICryptoDataClient, CryptoDataClient>()
                         .AddSingleton<IDataConvolve, DataConvolve>()
                         .AddSingleton<IMinMaxSelectorProvider, MinMaxSelectorProvider>()
-                        .AddSingleton<ITradingClientProvider, TradingClientProvider>();
-
-
-                    if (trainingIngest)
-                    {
-                        services
-                            .AddHostedService<FetchTrainingDataTask>();
-                    }
-                    else
-                    {
-                        
-                        services
-                            .AddSingleton<IMinMaxScalerProvider, MinMaxScalerProvider>()
-                            .AddHostedService<DataIngestWorker>()
-                            .AddHostedService<DataPreProcessingWorker>()
-                            .AddHostedService<PredictionWorker>()
-                            .AddHostedService<TradingWorker>()
-                            .AddHostedService<FolderCleanUpWorker>();
-                    }
+                        .AddSingleton<ITradingClientProvider, TradingClientProvider>()
+                        .AddSingleton<IMinMaxScalerProvider, MinMaxScalerProvider>()
+                        .AddHostedService<ModelTrainerWorker>()
+                        .AddHostedService<FetchTrainingDataTask>()
+                        .AddHostedService<DataIngestWorker>()
+                        .AddHostedService<DataPreProcessingWorker>()
+                        .AddHostedService<PredictionWorker>()
+                        .AddHostedService<TradingWorker>()
+                        .AddHostedService<FolderCleanUpWorker>();
                 });
     }
 }

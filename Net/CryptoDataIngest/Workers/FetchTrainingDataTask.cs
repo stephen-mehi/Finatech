@@ -26,7 +26,7 @@ namespace CryptoDataIngest.Workers
         private readonly string _minMaxDir;
         private readonly string _minMaxPath;
         private IReadOnlyList<(DateTime start, DateTime end)> _dataTimeRanges;
-        private readonly IDataBufferWriter<SourceOhlcRecordBase> _bufferOut;
+        private readonly IDataBufferWriter<OhlcRecordBaseBatch> _bufferOut;
         private readonly IMinMaxSelectorProvider _minMaxSelectorProv;
         private const int _batchSize = 500;
         private bool _disposed;
@@ -35,7 +35,7 @@ namespace CryptoDataIngest.Workers
             ILogger<DataIngestWorker> logger,
             ICryptoDataClient dataClient,
             IModelFormatter dataFormatter,
-            IDataBufferWriter<SourceOhlcRecordBase> bufferOut,
+            IDataBufferWriter<OhlcRecordBaseBatch> bufferOut,
             IMinMaxSelectorProvider minMaxSelectorProv,
             GlobalConfiguration config)
         {
@@ -50,82 +50,86 @@ namespace CryptoDataIngest.Workers
 
             _minMaxSelectorProv = minMaxSelectorProv;
 
-            _outputDir =  Path.GetDirectoryName(config.TrainingDataPath);
+            _outputDir = Path.GetDirectoryName(config.TrainingDataPath);
             _outputPath = config.TrainingDataPath;
             _minMaxDir = Path.GetDirectoryName(config.MinMaxDataPath);
             _minMaxPath = config.MinMaxDataPath;
-            _dataTimeRanges = config.TrainingDataTimePeriods;
+            _dataTimeRanges = GlobalConfiguration.TrainingDataTimePeriods;
 
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            //create root data dir if doesn't exist
-            Directory.CreateDirectory(_outputDir);
-            Directory.CreateDirectory(_minMaxDir);
-
-            if (File.Exists(_outputPath))
-                File.Delete(_outputPath);
-
-            if (File.Exists(_minMaxPath))
-                File.Delete(_minMaxPath);
-
-            var minMaxSelector = _minMaxSelectorProv.Get();
-
-            try
+            while (!stoppingToken.IsCancellationRequested)
             {
-                var rawData = new List<SourceOhlcRecordBase>();
+                //create root data dir if doesn't exist
+                Directory.CreateDirectory(_outputDir);
+                Directory.CreateDirectory(_minMaxDir);
 
-                foreach (var (start, end) in _dataTimeRanges)
+                if (File.Exists(_outputPath))
+                    File.Delete(_outputPath);
+
+                if (File.Exists(_minMaxPath))
+                    File.Delete(_minMaxPath);
+
+                var minMaxSelector = _minMaxSelectorProv.Get();
+
+                try
                 {
-                    long unixStart = (long)start.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
-                    long unixEnd = (long)end.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
+                    var rawData = new List<OhlcRecordBase>();
 
-                    long range = unixEnd - unixStart;
-                    long nRecords = range / (int)_interval;
-                    long nBatches = nRecords / _batchSize;
-                    long leftovers = nRecords % _batchSize;
-                    bool hasLeftovers = leftovers > 0;
-
-                    //add additional loop if have leftovers
-                    if (hasLeftovers)
-                        nBatches++;
-
-                    for (int i = 0; i < nBatches; i++)
+                    foreach (var (start, end) in _dataTimeRanges)
                     {
-                        long currentStart = unixStart + (_batchSize * (int)_interval * i);
-                        long currentEnd = i == nBatches && hasLeftovers ? currentStart + (leftovers * (int)_interval) : currentStart + (_batchSize * (int)_interval);
-                        //fetch batch of data filtering for data occuring after last logged timestamp
-                        var batchedData = await _dataClient.GetDataAsync(_cryptoSymbol, _currencySymbol, _interval, currentStart, currentEnd, stoppingToken);
+                        long unixStart = (long)start.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
+                        long unixEnd = (long)end.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
 
-                        foreach (var dataPoint in batchedData)
+                        long range = unixEnd - unixStart;
+                        long nRecords = range / (int)_interval;
+                        long nBatches = nRecords / _batchSize;
+                        long leftovers = nRecords % _batchSize;
+                        bool hasLeftovers = leftovers > 0;
+
+                        //add additional loop if have leftovers
+                        if (hasLeftovers)
+                            nBatches++;
+
+                        for (int i = 0; i < nBatches; i++)
                         {
-                            minMaxSelector.Assess(dataPoint);
-                            rawData.Add(dataPoint);
-                            _bufferOut.AddData(dataPoint, stoppingToken);
+                            long currentStart = unixStart + (_batchSize * (int)_interval * i);
+                            long currentEnd = i == nBatches && hasLeftovers ? currentStart + (leftovers * (int)_interval) : currentStart + (_batchSize * (int)_interval);
+                            //fetch batch of data filtering for data occuring after last logged timestamp
+                            var batchedData = await _dataClient.GetDataAsync(_cryptoSymbol, _currencySymbol, _interval, currentStart, currentEnd, stoppingToken);
+
+                            foreach (var dataPoint in batchedData)
+                            {
+                                minMaxSelector.Assess(dataPoint);
+                                rawData.Add(dataPoint);
+                            }
                         }
                     }
+
+                    //write batch of data to out buffer
+                    _bufferOut.AddData(new OhlcRecordBaseBatch(rawData), stoppingToken);
+
+                    //format/supplement data
+                    var formattedData =
+                        $"{_dataFormatter.GetHeader<ScaledOhlcRecord>()}" +
+                        $"{Environment.NewLine}" +
+                        $"{string.Join(Environment.NewLine, _dataFormatter.Format(rawData))}";
+
+                    //write batch of new data to file. Create new file every day
+                    await File.WriteAllTextAsync(_outputPath, formattedData, stoppingToken);
+
+                    //persist min-max data
+                    await File.WriteAllTextAsync(_minMaxPath, JsonConvert.SerializeObject(minMaxSelector.GetCurrentMinMax()), stoppingToken);
+                }
+                catch (Exception e)
+                {
+                    _logger.LogError(e, $"Failed to fetch OHLC data for training ");
                 }
 
-                //format/supplement data
-                var formattedData =
-                    $"{_dataFormatter.GetHeader<ScaledOhlcRecord>()}" +
-                    $"{Environment.NewLine}" +
-                    $"{string.Join(Environment.NewLine, _dataFormatter.Format(rawData))}";
-
-                //write batch of new data to file. Create new file every day
-                await File.WriteAllTextAsync(_outputPath, formattedData, stoppingToken);
-
-                //persist min-max data
-                await File.WriteAllTextAsync(_minMaxPath, JsonConvert.SerializeObject(minMaxSelector.GetCurrentMinMax()), stoppingToken);
-            }
-            catch (Exception e)
-            {
-                _logger.LogError(e, $"Failed to fetch OHLC data for training ");
-            }
-            finally
-            {
-                _bufferOut.Dispose();
+                //run every day
+                await Task.Delay(TimeSpan.FromDays(1), stoppingToken);
             }
         }
 

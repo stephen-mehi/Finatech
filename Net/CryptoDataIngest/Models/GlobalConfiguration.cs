@@ -20,9 +20,11 @@ namespace CryptoDataIngest.Models
             ModelDirectory = Path.Combine(RootDataDirectory, "Model", "04_10_2021_11_50_24");
 
             HyperParams = new HyperParameters(512, "tanh", "mse", "adam", 0.2, 25, 125, 12, 1, 202);
+
+            //TODO: ADD MOST RECENT TIME RANGE
         }
 
-        public IReadOnlyList<(DateTime start, DateTime end)> TrainingDataTimePeriods { get; } =
+        public static IReadOnlyList<(DateTime start, DateTime end)> TrainingDataTimePeriods  => 
             new List<(DateTime start, DateTime end)>()
             {
                 //(new DateTime(2018, 5, 29), new DateTime(2018, 12, 31)),
@@ -32,7 +34,8 @@ namespace CryptoDataIngest.Models
                 //(new DateTime(2020, 1, 23), new DateTime(2020, 3, 1)),
                 //(new DateTime(2020, 3, 9), new DateTime(2020, 4, 16)),
                 //(new DateTime(2020, 5, 12), new DateTime(2020, 10, 26)),
-                (new DateTime(2021, 1, 1), new DateTime(2021, 4, 9))
+
+                (new DateTime(2021, 1, 1), DateTime.Now)
             };
 
         public long FileExpiration { get; } = 60 * 60 * 24 * 5;

@@ -51,15 +51,26 @@ namespace CryptoDataIngest.Models
         public double quoteVolume { get; private set; }
     }
 
-    internal class SourceOhlcRecordBase : OhlcRecordBase
+    internal class OhlcRecordBaseBatch
     {
-        public SourceOhlcRecordBase(long date, double open, double high, double low, double close, double weightedAverage, double volume, double quoteVolume)
-            : base(date, open, high, low, close, weightedAverage, volume, quoteVolume)
+        public OhlcRecordBaseBatch(
+            IEnumerable<OhlcRecordBase> data)
         {
+            Data = data;
         }
+
+        public IEnumerable<OhlcRecordBase> Data { get; }
     }
 
-    internal class ScaledOhlcRecord : SourceOhlcRecordBase
+    //internal class SourceOhlcRecordBase : OhlcRecordBase
+    //{
+    //    public SourceOhlcRecordBase(long date, double open, double high, double low, double close, double weightedAverage, double volume, double quoteVolume)
+    //        : base(date, open, high, low, close, weightedAverage, volume, quoteVolume)
+    //    {
+    //    }
+    //}
+
+    internal class ScaledOhlcRecord : OhlcRecordBase
     {
         public ScaledOhlcRecord(
             long date,

@@ -13,6 +13,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Numpy;
 using Python.Runtime;
+using Newtonsoft.Json;
 
 namespace CryptoDataIngest.Workers
 {
@@ -27,9 +28,10 @@ namespace CryptoDataIngest.Workers
         private readonly int _lookBackBatchSize;
         private readonly TimeIntervalEnum _timeInterval;
         private readonly IDataPersistence _persistence;
-        private readonly IMinMaxScaler _normalizer;
+        private readonly IMinMaxScalerProvider _scalerProv;
         private readonly string _outputDir;
         private bool _disposed;
+        private readonly GlobalConfiguration _config;
         private Task<ModelSource> _nextModelTask;
 
         public PredictionWorker(
@@ -39,9 +41,10 @@ namespace CryptoDataIngest.Workers
             IDataBufferWriter<PredictedClose> bufferOut,
             GlobalConfiguration config,
             IDataPersistence persistence,
-            IMinMaxScaler normalizer)
+            IMinMaxScalerProvider scalerProv)
         {
-            _normalizer = normalizer;
+            _config = config;
+            _scalerProv = scalerProv;
             _persistence = persistence;
             _timeInterval = config.TimeInterval;
             _lookBackBatchSize = config.HyperParams.LookBack;
@@ -49,20 +52,23 @@ namespace CryptoDataIngest.Workers
             _bufferIn = bufferIn;
             _bufferOut = bufferOut;
             _logger = logger;
-            using (Py.GIL())
-            {
-                _model = BaseModel.ModelFromJson(File.ReadAllText(Path.Combine(config.ModelDirectory, "model.json")));
-                _model.LoadWeight(Path.Combine(config.ModelDirectory, "weights.h5"));
-            }
             _outputDir = config.PredictionDataDirectory;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-
             var lookBackQueue = new Queue<ScaledOhlcRecord>();
 
+            //initialize model
             await using var modelEnumerator = _modelBufferIn.GetDataAsync(stoppingToken).GetAsyncEnumerator(stoppingToken);
+            await modelEnumerator.MoveNextAsync();
+
+            //replace existing if new model available
+            using (Py.GIL())
+            {
+                _model = BaseModel.ModelFromJson(File.ReadAllText(Path.Combine(modelEnumerator.Current.ModelDirectory, "model.json")));
+                _model.LoadWeight(Path.Combine(modelEnumerator.Current.ModelDirectory, "weights.h5"));
+            }
 
             await foreach (var dataPoint in _bufferIn.GetDataAsync(stoppingToken))
             {
@@ -72,7 +78,7 @@ namespace CryptoDataIngest.Workers
                         break;
 
                     //check if next model is available
-                    if(_nextModelTask.IsCompleted)
+                    if(_nextModelTask == null || _nextModelTask.IsCompleted)
                     {
                         string nextModelDir = _nextModelTask.Result.ModelDirectory;
 
@@ -116,6 +122,10 @@ namespace CryptoDataIngest.Workers
                             index++;
                         }
 
+                        //get minmax scaler
+                        var minMaxData = JsonConvert.DeserializeObject<MinMaxModel>(File.ReadAllText(_config.MinMaxDataPath));
+                        var scaler = _scalerProv.Get(minMaxData);
+
                         //predict and get last column, i.e. the close price
                         using (Py.GIL())
                         {
@@ -125,7 +135,7 @@ namespace CryptoDataIngest.Workers
                             //calculate the unix time associated with prediction
                             long predictionUnixTime = localLookBack.Last().date + (int)_timeInterval;
 
-                            var denormalizedClose = _normalizer.DeScaleClose(new List<double>() { closePrediction }).Single();
+                            var denormalizedClose = scaler.DeScaleClose(new List<double>() { closePrediction }).Single();
 
                             var closePredictionModel = new PredictedClose(denormalizedClose, predictionUnixTime);
 

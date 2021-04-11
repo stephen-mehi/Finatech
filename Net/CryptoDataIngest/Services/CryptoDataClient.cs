@@ -14,7 +14,7 @@ namespace CryptoDataIngest.Services
 {
     internal interface ICryptoDataClient
     {
-        Task<IReadOnlyList<SourceOhlcRecordBase>> GetDataAsync(
+        Task<IReadOnlyList<OhlcRecordBase>> GetDataAsync(
             string cryptoSymbol,
             string currencySymbol,
             TimeIntervalEnum interval,
@@ -25,7 +25,7 @@ namespace CryptoDataIngest.Services
 
     internal class CryptoDataClient : ICryptoDataClient
     {
-        public async Task<IReadOnlyList<SourceOhlcRecordBase>> GetDataAsync(
+        public async Task<IReadOnlyList<OhlcRecordBase>> GetDataAsync(
             string cryptoSymbol,
             string currencySymbol,
             TimeIntervalEnum interval,
@@ -46,7 +46,7 @@ namespace CryptoDataIngest.Services
             using var jr = new JsonTextReader(sr);
             var jd = new JsonSerializer();
 
-            var output = jd.Deserialize<List<SourceOhlcRecordBase>>(jr);
+            var output = jd.Deserialize<List<OhlcRecordBase>>(jr);
 
             return output;
         }

@@ -39,7 +39,7 @@ namespace CryptoDataIngest.Workers
             _scalerProv = scalerProv;
             _persistence = persistence;
             _outputDir = config.ProcessedDataDirectory;
-            _lookBackBatchSize = config.LookBackBatchSize;
+            _lookBackBatchSize = config.HyperParams.LookBack;
             _config = config;
         }
 
@@ -47,10 +47,14 @@ namespace CryptoDataIngest.Workers
         {
             var lookBackQueue = new Queue<OhlcRecordBase>();
 
-            await foreach (OhlcRecordBase data in _bufferIn.GetDataAsync(stoppingToken))
+            await foreach (var data in _bufferIn.GetDataAsync(stoppingToken))
             {
                 try
                 {
+                    //skip data if we don't have min max data established
+                    if (!File.Exists(_config.MinMaxDataPath))
+                        continue;
+
                     //get global max and min 
                     var minMaxData = JsonConvert.DeserializeObject<MinMaxModel>(File.ReadAllText(_config.MinMaxDataPath));
                     //get scaler
@@ -84,6 +88,9 @@ namespace CryptoDataIngest.Workers
                 catch (Exception e)
                 {
                     _logger.LogError(e, $"Failed to run OHLC data preprocessing. Error occurred during preprocessing worker loop. ");
+                }
+                finally
+                {
                     await Task.Delay(5000, stoppingToken);
                 }
             }
