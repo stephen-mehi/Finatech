@@ -33,3 +33,10 @@ python
 import tensorflow as tf
 print(tf.test.is_built_with_cuda())
 print(tf.config.list_physical_devices('GPU')) 
+
+#for ARIMA
+python -m pip install pmdarima
+#for fb prophet
+conda install -c conda-forge fbprophet -y
+conda install plotly
+

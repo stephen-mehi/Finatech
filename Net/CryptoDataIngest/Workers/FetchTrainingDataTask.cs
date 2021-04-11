@@ -26,14 +26,20 @@ namespace CryptoDataIngest.Workers
         private readonly string _minMaxDir;
         private readonly string _minMaxPath;
         private IReadOnlyList<(DateTime start, DateTime end)> _dataTimeRanges;
+        private readonly IDataBufferWriter<SourceOhlcRecordBase> _bufferOut;
+        private readonly IMinMaxSelectorProvider _minMaxSelectorProv;
         private const int _batchSize = 500;
+        private bool _disposed;
 
         public FetchTrainingDataTask(
             ILogger<DataIngestWorker> logger,
             ICryptoDataClient dataClient,
             IModelFormatter dataFormatter,
+            IDataBufferWriter<SourceOhlcRecordBase> bufferOut,
+            IMinMaxSelectorProvider minMaxSelectorProv,
             GlobalConfiguration config)
         {
+            _bufferOut = bufferOut;
             _logger = logger;
             _dataFormatter = dataFormatter;
             _dataClient = dataClient;
@@ -41,6 +47,8 @@ namespace CryptoDataIngest.Workers
             _interval = config.TimeInterval;
             _cryptoSymbol = "ETH";
             _currencySymbol = "USDT";
+
+            _minMaxSelectorProv = minMaxSelectorProv;
 
             _outputDir =  Path.GetDirectoryName(config.TrainingDataPath);
             _outputPath = config.TrainingDataPath;
@@ -62,15 +70,11 @@ namespace CryptoDataIngest.Workers
             if (File.Exists(_minMaxPath))
                 File.Delete(_minMaxPath);
 
+            var minMaxSelector = _minMaxSelectorProv.Get();
+
             try
             {
-                //init min-max vars
-                double maxOpen, maxHigh, maxLow, maxClose, maxWeightedAvg, maxVol, maxQuoteVol;
-                maxOpen = maxHigh = maxLow = maxClose = maxWeightedAvg = maxVol = maxQuoteVol = double.MinValue;
-                double minOpen, minHigh, minLow, minClose, minWeightedAvg, minVol, minQuoteVol;
-                minOpen = minHigh = minLow = minClose = minWeightedAvg = minVol = minQuoteVol = double.MaxValue;
-
-                var rawData = new List<OhlcRecordBase>();
+                var rawData = new List<SourceOhlcRecordBase>();
 
                 foreach (var (start, end) in _dataTimeRanges)
                 {
@@ -96,60 +100,55 @@ namespace CryptoDataIngest.Workers
 
                         foreach (var dataPoint in batchedData)
                         {
-                            //set mins and maxes
-                            if (dataPoint.open > maxOpen)
-                                maxOpen = dataPoint.open;
-                            if (dataPoint.open < minOpen)
-                                minOpen = dataPoint.open;
-                            if (dataPoint.high > maxHigh)
-                                maxHigh = dataPoint.high;
-                            if (dataPoint.high < minHigh)
-                                minHigh = dataPoint.high;
-                            if (dataPoint.low > maxLow)
-                                maxLow = dataPoint.low;
-                            if (dataPoint.low < minLow)
-                                minLow = dataPoint.low;
-                            if (dataPoint.close > maxClose)
-                                maxClose = dataPoint.close;
-                            if (dataPoint.close < minClose)
-                                minClose = dataPoint.close;
-                            if (dataPoint.weightedAverage > maxWeightedAvg)
-                                maxWeightedAvg = dataPoint.weightedAverage;
-                            if (dataPoint.weightedAverage < minWeightedAvg)
-                                minWeightedAvg = dataPoint.weightedAverage;
-                            if (dataPoint.volume > maxVol)
-                                maxVol = dataPoint.volume;
-                            if (dataPoint.volume < minVol)
-                                minVol = dataPoint.volume;
-                            if (dataPoint.quoteVolume > maxQuoteVol)
-                                maxQuoteVol = dataPoint.quoteVolume;
-                            if (dataPoint.quoteVolume < minQuoteVol)
-                                minQuoteVol = dataPoint.quoteVolume;
-
+                            minMaxSelector.Assess(dataPoint);
                             rawData.Add(dataPoint);
+                            _bufferOut.AddData(dataPoint, stoppingToken);
                         }
                     }
                 }
 
                 //format/supplement data
                 var formattedData =
-                    $"{_dataFormatter.GetHeader<NormalizedOhlcRecord>()}" +
+                    $"{_dataFormatter.GetHeader<ScaledOhlcRecord>()}" +
                     $"{Environment.NewLine}" +
                     $"{string.Join(Environment.NewLine, _dataFormatter.Format(rawData))}";
 
                 //write batch of new data to file. Create new file every day
                 await File.WriteAllTextAsync(_outputPath, formattedData, stoppingToken);
 
-                //prep min-max data
-                var minModel = new OhlcRecordBase(0, minOpen, minHigh, minLow, minClose, minWeightedAvg, minVol, minQuoteVol);
-                var maxModel = new OhlcRecordBase(0, maxOpen, maxHigh, maxLow, maxClose, maxWeightedAvg, maxVol, maxQuoteVol);
                 //persist min-max data
-                await File.WriteAllTextAsync(_minMaxPath, JsonConvert.SerializeObject(new MinMaxModel(minModel, maxModel)), stoppingToken);
+                await File.WriteAllTextAsync(_minMaxPath, JsonConvert.SerializeObject(minMaxSelector.GetCurrentMinMax()), stoppingToken);
             }
             catch (Exception e)
             {
                 _logger.LogError(e, $"Failed to fetch OHLC data for training ");
             }
+            finally
+            {
+                _bufferOut.Dispose();
+            }
+        }
+
+        // Public implementation of Dispose pattern callable by consumers.
+        public override void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        // Protected implementation of Dispose pattern.
+        protected virtual void Dispose(bool disposing)
+        {
+            if (_disposed)
+                return;
+
+            if (disposing)
+            {
+                // Dispose managed state (managed objects).
+                _bufferOut.Dispose();
+            }
+
+            _disposed = true;
         }
     }
 }

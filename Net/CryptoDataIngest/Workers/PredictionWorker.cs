@@ -20,35 +20,39 @@ namespace CryptoDataIngest.Workers
     {
 
         private readonly ILogger<PredictionWorker> _logger;
-        private readonly IDataBufferReader<NormalizedOhlcRecord> _bufferIn;
+        private readonly IDataBufferReader<ModelSource> _modelBufferIn;
+        private readonly IDataBufferReader<ScaledOhlcRecord> _bufferIn;
         private readonly IDataBufferWriter<PredictedClose> _bufferOut;
-        private readonly BaseModel _model;
+        private BaseModel _model;
         private readonly int _lookBackBatchSize;
         private readonly TimeIntervalEnum _timeInterval;
         private readonly IDataPersistence _persistence;
-        private readonly ICryptoDataNormalizer _normalizer;
+        private readonly IMinMaxScaler _normalizer;
         private readonly string _outputDir;
         private bool _disposed;
+        private Task<ModelSource> _nextModelTask;
 
         public PredictionWorker(
             ILogger<PredictionWorker> logger,
-            IDataBufferReader<NormalizedOhlcRecord> bufferIn,
+            IDataBufferReader<ScaledOhlcRecord> bufferIn,
+            IDataBufferReader<ModelSource> modelBufferIn,
             IDataBufferWriter<PredictedClose> bufferOut,
             GlobalConfiguration config,
             IDataPersistence persistence,
-            ICryptoDataNormalizer normalizer)
+            IMinMaxScaler normalizer)
         {
             _normalizer = normalizer;
             _persistence = persistence;
             _timeInterval = config.TimeInterval;
-            _lookBackBatchSize = config.LookBackBatchSize;
+            _lookBackBatchSize = config.HyperParams.LookBack;
+            _modelBufferIn = modelBufferIn;
             _bufferIn = bufferIn;
             _bufferOut = bufferOut;
             _logger = logger;
             using (Py.GIL())
             {
-                _model = BaseModel.ModelFromJson(File.ReadAllText(@"C:\ProgramData\ETH\Model\model.json"));
-                _model.LoadWeight(@"C:\ProgramData\ETH\Model\model.h5");
+                _model = BaseModel.ModelFromJson(File.ReadAllText(Path.Combine(config.ModelDirectory, "model.json")));
+                _model.LoadWeight(Path.Combine(config.ModelDirectory, "weights.h5"));
             }
             _outputDir = config.PredictionDataDirectory;
         }
@@ -56,7 +60,9 @@ namespace CryptoDataIngest.Workers
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
 
-            var lookBackQueue = new Queue<NormalizedOhlcRecord>();
+            var lookBackQueue = new Queue<ScaledOhlcRecord>();
+
+            await using var modelEnumerator = _modelBufferIn.GetDataAsync(stoppingToken).GetAsyncEnumerator(stoppingToken);
 
             await foreach (var dataPoint in _bufferIn.GetDataAsync(stoppingToken))
             {
@@ -64,6 +70,26 @@ namespace CryptoDataIngest.Workers
                 {
                     if (stoppingToken.IsCancellationRequested)
                         break;
+
+                    //check if next model is available
+                    if(_nextModelTask.IsCompleted)
+                    {
+                        string nextModelDir = _nextModelTask.Result.ModelDirectory;
+
+                        //replace existing if new model available
+                        using (Py.GIL())
+                        {
+                            _model = BaseModel.ModelFromJson(File.ReadAllText(Path.Combine(nextModelDir, "model.json")));
+                            _model.LoadWeight(Path.Combine(nextModelDir, "weights.h5"));
+                        }
+
+                        //start getting next model
+                        _nextModelTask = Task.Run(async () =>
+                        {
+                            await modelEnumerator.MoveNextAsync();
+                            return modelEnumerator.Current;
+                        });
+                    }
 
                     //add to batch
                     lookBackQueue.Enqueue(dataPoint);
@@ -99,7 +125,7 @@ namespace CryptoDataIngest.Workers
                             //calculate the unix time associated with prediction
                             long predictionUnixTime = localLookBack.Last().date + (int)_timeInterval;
 
-                            var denormalizedClose = _normalizer.DenormalizeClose(new List<double>() { closePrediction }).Single();
+                            var denormalizedClose = _normalizer.DeScaleClose(new List<double>() { closePrediction }).Single();
 
                             var closePredictionModel = new PredictedClose(denormalizedClose, predictionUnixTime);
 

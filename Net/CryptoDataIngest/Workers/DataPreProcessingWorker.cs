@@ -2,6 +2,7 @@ using CryptoDataIngest.Models;
 using CryptoDataIngest.Services;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -16,28 +17,30 @@ namespace CryptoDataIngest.Workers
     {
         private readonly ILogger<DataIngestWorker> _logger;
         private readonly IDataBufferReader<OhlcRecordBase> _bufferIn;
-        private readonly IDataBufferWriter<NormalizedOhlcRecord> _bufferOut;
-        private readonly ICryptoDataNormalizer _normalizer;
+        private readonly IDataBufferWriter<ScaledOhlcRecord> _bufferOut;
+        private readonly IMinMaxScalerProvider _scalerProv;
         private readonly string _outputDir;
         private readonly IDataPersistence _persistence;
         private readonly int _lookBackBatchSize;
+        private readonly GlobalConfiguration _config;
         private bool _disposed;
 
         public DataPreProcessingWorker(
             ILogger<DataIngestWorker> logger,
             IDataBufferReader<OhlcRecordBase> bufferIn,
-            IDataBufferWriter<NormalizedOhlcRecord> bufferOut,
-            ICryptoDataNormalizer normalizer,
+            IDataBufferWriter<ScaledOhlcRecord> bufferOut,
+            IMinMaxScalerProvider scalerProv,
             IDataPersistence persistence,
             GlobalConfiguration config)
         {
             _logger = logger;
             _bufferIn = bufferIn;
             _bufferOut = bufferOut;
-            _normalizer = normalizer;
+            _scalerProv = scalerProv;
             _persistence = persistence;
             _outputDir = config.ProcessedDataDirectory;
             _lookBackBatchSize = config.LookBackBatchSize;
+            _config = config;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -48,6 +51,11 @@ namespace CryptoDataIngest.Workers
             {
                 try
                 {
+                    //get global max and min 
+                    var minMaxData = JsonConvert.DeserializeObject<MinMaxModel>(File.ReadAllText(_config.MinMaxDataPath));
+                    //get scaler
+                    var scaler = _scalerProv.Get(minMaxData);
+
                     if (stoppingToken.IsCancellationRequested)
                         break;
 
@@ -59,15 +67,15 @@ namespace CryptoDataIngest.Workers
                     {
                         //copy queue locally
                         var localLookBack = lookBackQueue.ToList();
-                        //normalize
-                        var normalizedData = _normalizer.Normalize(localLookBack).ToList();
+                        //scale
+                        var scaledData = scaler.Scale(localLookBack).ToList();
 
                         //post to buffer
-                        foreach (var item in normalizedData)
+                        foreach (var item in scaledData)
                             _bufferOut.AddData(item, stoppingToken);
 
                         //write to file
-                        await _persistence.WriteToDirectoryAsync(_outputDir, normalizedData, stoppingToken);
+                        await _persistence.WriteToDirectoryAsync(_outputDir, scaledData, stoppingToken);
 
                         //remove one for sliding window
                         lookBackQueue.Dequeue();

@@ -51,9 +51,17 @@ namespace CryptoDataIngest.Models
         public double quoteVolume { get; private set; }
     }
 
-    internal class NormalizedOhlcRecord : OhlcRecordBase
+    internal class SourceOhlcRecordBase : OhlcRecordBase
     {
-        public NormalizedOhlcRecord(
+        public SourceOhlcRecordBase(long date, double open, double high, double low, double close, double weightedAverage, double volume, double quoteVolume)
+            : base(date, open, high, low, close, weightedAverage, volume, quoteVolume)
+        {
+        }
+    }
+
+    internal class ScaledOhlcRecord : SourceOhlcRecordBase
+    {
+        public ScaledOhlcRecord(
             long date,
             double open,
             double high,

@@ -29,8 +29,10 @@ namespace CryptoDataIngest
                     PythonEngine.BeginAllowThreads();
 
                     //init buffers
+                    var modelBuff = new DataBuffer<ModelSource>();
+                    var sourceBuff = new DataBuffer<SourceOhlcRecordBase>();
                     var ingestBuff = new DataBuffer<OhlcRecordBase>();
-                    var preProcBuff = new DataBuffer<NormalizedOhlcRecord>();
+                    var preProcBuff = new DataBuffer<ScaledOhlcRecord>();
                     var predBuff = new DataBuffer<PredictedClose>();
 
                     var config = new GlobalConfiguration();
@@ -40,14 +42,20 @@ namespace CryptoDataIngest
                     services
                         .AddSingleton(config)
                         .AddSingleton<IModelFormatter, CsvDataFormatter>()
+                        .AddSingleton<IDataBufferWriter<ModelSource>>(modelBuff)
+                        .AddSingleton<IDataBufferWriter<SourceOhlcRecordBase>>(sourceBuff)
                         .AddSingleton<IDataBufferWriter<OhlcRecordBase>>(ingestBuff)
-                        .AddSingleton<IDataBufferWriter<NormalizedOhlcRecord>>(preProcBuff)
+                        .AddSingleton<IDataBufferWriter<ScaledOhlcRecord>>(preProcBuff)
                         .AddSingleton<IDataBufferWriter<PredictedClose>>(predBuff)
+                        .AddSingleton<IDataBufferReader<ModelSource>>(modelBuff)
+                        .AddSingleton<IDataBufferReader<SourceOhlcRecordBase>>(sourceBuff)
                         .AddSingleton<IDataBufferReader<OhlcRecordBase>>(ingestBuff)
-                        .AddSingleton<IDataBufferReader<NormalizedOhlcRecord>>(preProcBuff)
+                        .AddSingleton<IDataBufferReader<ScaledOhlcRecord>>(preProcBuff)
                         .AddSingleton<IDataBufferReader<PredictedClose>>(predBuff)
                         .AddSingleton<IDataPersistence, DataPersistence>()
                         .AddSingleton<ICryptoDataClient, CryptoDataClient>()
+                        .AddSingleton<IDataConvolve, DataConvolve>()
+                        .AddSingleton<IMinMaxSelectorProvider, MinMaxSelectorProvider>()
                         .AddSingleton<ITradingClientProvider, TradingClientProvider>();
 
 
@@ -58,11 +66,9 @@ namespace CryptoDataIngest
                     }
                     else
                     {
-                        //get global max and min 
-                        var minMaxData = JsonConvert.DeserializeObject<MinMaxModel>(File.ReadAllText(config.MinMaxDataPath));
+                        
                         services
-                            .AddSingleton(minMaxData)
-                            .AddSingleton<ICryptoDataNormalizer>(new CryptoDataNormalizer(minMaxData))
+                            .AddSingleton<IMinMaxScalerProvider, MinMaxScalerProvider>()
                             .AddHostedService<DataIngestWorker>()
                             .AddHostedService<DataPreProcessingWorker>()
                             .AddHostedService<PredictionWorker>()
