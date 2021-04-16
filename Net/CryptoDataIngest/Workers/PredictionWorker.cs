@@ -63,12 +63,15 @@ namespace CryptoDataIngest.Workers
             await using var modelEnumerator = _modelBufferIn.GetDataAsync(stoppingToken).GetAsyncEnumerator(stoppingToken);
             await modelEnumerator.MoveNextAsync();
 
-            //replace existing if new model available
+            //initialize model to first incoming model before entering prediction loop
             using (Py.GIL())
             {
                 _model = BaseModel.ModelFromJson(File.ReadAllText(Path.Combine(modelEnumerator.Current.ModelDirectory, "model.json")));
                 _model.LoadWeight(Path.Combine(modelEnumerator.Current.ModelDirectory, "weights.h5"));
             }
+
+            //kick off await for next incoming model
+            _nextModelTask = Task.Run(async () => { await modelEnumerator.MoveNextAsync(); return modelEnumerator.Current; });
 
             await foreach (var dataPoint in _bufferIn.GetDataAsync(stoppingToken))
             {
@@ -78,7 +81,7 @@ namespace CryptoDataIngest.Workers
                         break;
 
                     //check if next model is available
-                    if(_nextModelTask == null || _nextModelTask.IsCompleted)
+                    if (_nextModelTask.IsCompleted)
                     {
                         string nextModelDir = _nextModelTask.Result.ModelDirectory;
 
@@ -90,11 +93,7 @@ namespace CryptoDataIngest.Workers
                         }
 
                         //start getting next model
-                        _nextModelTask = Task.Run(async () =>
-                        {
-                            await modelEnumerator.MoveNextAsync();
-                            return modelEnumerator.Current;
-                        });
+                        _nextModelTask = Task.Run(async () => { await modelEnumerator.MoveNextAsync(); return modelEnumerator.Current; });
                     }
 
                     //add to batch

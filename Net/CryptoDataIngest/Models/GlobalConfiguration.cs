@@ -17,11 +17,22 @@ namespace CryptoDataIngest.Models
             TrainingDataPath = Path.Combine(RootDataDirectory, "TrainingData", "training.csv");
             PredictionDataDirectory = Path.Combine(RootDataDirectory, "Predictions");
             MinMaxDataPath = Path.Combine(RootDataDirectory, "MinMaxData", "minmax.json");
-            ModelDirectory = Path.Combine(RootDataDirectory, "Model", "04_10_2021_11_50_24");
+            ModelDirectory = Path.Combine(RootDataDirectory, "Model");
 
-            HyperParams = new HyperParameters(512, "tanh", "mse", "adam", 0.2, 25, 125, 12, 1, 202);
+            HyperParams =
+                new HyperParameters(
+                    neurons: 125,
+                    activationFunc: "tanh",
+                    lossFunc: "mse",
+                    optimizer: "adam",
+                    dropout: 0.2,
+                    batchSize: 32,
+                    epochs: 150,
+                    lookback: 6,
+                    lookForward: 1,
+                    randomSeed: 202,
+                    new List<string>() { "mse", "mae", "mape" });
 
-            //TODO: ADD MOST RECENT TIME RANGE
         }
 
         public static IReadOnlyList<(DateTime start, DateTime end)> TrainingDataTimePeriods  => 
@@ -39,14 +50,15 @@ namespace CryptoDataIngest.Models
             };
 
         public long FileExpiration { get; } = 60 * 60 * 24 * 5;
-        public TimeIntervalEnum TimeInterval { get; } = TimeIntervalEnum.fiveMinute;
+        public TimeIntervalEnum TimeInterval { get; } = TimeIntervalEnum.fifteenMinute;
         public string RootDataDirectory { get; }
         public string RawDataPathDirectory { get; }
         public string ProcessedDataDirectory { get; }
         public string PredictionDataDirectory { get; }
         public string MinMaxDataPath { get; }
         public string TrainingDataPath { get; }
-        public string ModelDirectory{ get; }
+        public string ModelDirectory { get; }
+        public int ModelRetrainDelayHours { get; } = 6;
         public HyperParameters HyperParams { get; }
     }
 }

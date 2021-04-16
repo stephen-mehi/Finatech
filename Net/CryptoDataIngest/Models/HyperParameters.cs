@@ -18,8 +18,10 @@ namespace CryptoDataIngest.Models
             int epochs,
             int lookback,
             int lookForward,
-            int randomSeed)
+            int randomSeed,
+            IEnumerable<string> metrics)
         {
+            Metrics = metrics.ToHashSet();
             Neurons = neurons;
             ActivationFunction = activationFunc;
             LossFunction = lossFunc;
@@ -42,5 +44,6 @@ namespace CryptoDataIngest.Models
         public int LookBack { get; }
         public int LookForward { get; }
         public int RandomSeed { get; }
+        public HashSet<string> Metrics { get; }
     }
 }

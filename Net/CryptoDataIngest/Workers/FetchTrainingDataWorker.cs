@@ -3,6 +3,7 @@ using CryptoDataIngest.Services;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Python.Runtime;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -13,7 +14,7 @@ using System.Threading.Tasks;
 
 namespace CryptoDataIngest.Workers
 {
-    internal class FetchTrainingDataTask : BackgroundService
+    internal class FetchTrainingDataWorker : BackgroundService
     {
         private readonly ILogger<DataIngestWorker> _logger;
         private readonly ICryptoDataClient _dataClient;
@@ -25,20 +26,25 @@ namespace CryptoDataIngest.Workers
         private readonly string _outputPath;
         private readonly string _minMaxDir;
         private readonly string _minMaxPath;
+        private readonly GlobalConfiguration _config;
         private IReadOnlyList<(DateTime start, DateTime end)> _dataTimeRanges;
         private readonly IDataBufferWriter<OhlcRecordBaseBatch> _bufferOut;
         private readonly IMinMaxSelectorProvider _minMaxSelectorProv;
+        private readonly IModelSourceRepo _modelSourceRepo;
         private const int _batchSize = 500;
         private bool _disposed;
 
-        public FetchTrainingDataTask(
+        public FetchTrainingDataWorker(
             ILogger<DataIngestWorker> logger,
             ICryptoDataClient dataClient,
             IModelFormatter dataFormatter,
             IDataBufferWriter<OhlcRecordBaseBatch> bufferOut,
             IMinMaxSelectorProvider minMaxSelectorProv,
-            GlobalConfiguration config)
+            GlobalConfiguration config,
+            IModelSourceRepo modelSrcRepo)
         {
+            _modelSourceRepo = modelSrcRepo;
+            _config = config;
             _bufferOut = bufferOut;
             _logger = logger;
             _dataFormatter = dataFormatter;
@@ -58,8 +64,21 @@ namespace CryptoDataIngest.Workers
 
         }
 
-        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken = default)
         {
+            //get existing model ts and paths
+            var modelTimestampMap = _modelSourceRepo.ListModelSources();
+
+            //if any models found
+            if(modelTimestampMap.Count > 0)
+            {
+                var timeDiffHours = (DateTime.Now - modelTimestampMap.Keys.Max());
+
+                //model exists that is not older than retrain delay, wait difference amount of time before getting data for retrain
+                if (timeDiffHours.TotalHours < _config.ModelRetrainDelayHours)
+                    await Task.Delay(timeDiffHours, stoppingToken);
+            }
+
             while (!stoppingToken.IsCancellationRequested)
             {
                 //create root data dir if doesn't exist
@@ -128,8 +147,8 @@ namespace CryptoDataIngest.Workers
                     _logger.LogError(e, $"Failed to fetch OHLC data for training ");
                 }
 
-                //run every day
-                await Task.Delay(TimeSpan.FromDays(1), stoppingToken);
+                //run every n hours
+                await Task.Delay(TimeSpan.FromHours(_config.ModelRetrainDelayHours), stoppingToken);
             }
         }
 

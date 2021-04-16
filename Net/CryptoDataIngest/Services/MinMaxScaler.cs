@@ -39,7 +39,19 @@ namespace CryptoDataIngest.Services
             MinMaxModel minMaxModel)
         {
             _min = minMaxModel.Minimum;
-            _max = minMaxModel.Maximum;
+
+            double percentAddition = 0.05;
+
+            //set max as 10% higher than actual max since having toruble predicting around max
+            double maxOpen = minMaxModel.Maximum.open + minMaxModel.Maximum.open * percentAddition;
+            double maxHigh = minMaxModel.Maximum.high + minMaxModel.Maximum.high * percentAddition;
+            double maxLow = minMaxModel.Maximum.low + minMaxModel.Maximum.low * percentAddition;
+            double maxClose = minMaxModel.Maximum.close + minMaxModel.Maximum.close * percentAddition;
+            double maxWeighted = minMaxModel.Maximum.weightedAverage + minMaxModel.Maximum.weightedAverage * percentAddition;
+            double maxVol = minMaxModel.Maximum.volume + minMaxModel.Maximum.volume * percentAddition;
+            double maxQuoteVol = minMaxModel.Maximum.quoteVolume + minMaxModel.Maximum.quoteVolume * percentAddition;
+
+            _max = new OhlcRecordBase(default, maxOpen, maxHigh, maxLow, maxClose, maxWeighted, maxVol, maxQuoteVol);
         }
 
         private static IReadOnlyList<double> ScaleInternal(IEnumerable<double> input, double min, double max)

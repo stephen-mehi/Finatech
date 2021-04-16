@@ -10,6 +10,7 @@ using CryptoDataIngest.Services;
 using Keras;
 using Keras.Layers;
 using Keras.Models;
+using Keras.Regularizers;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
@@ -78,25 +79,31 @@ namespace CryptoDataIngest.Workers
 
                     using (Py.GIL())
                     {
-                        Keras.
                         //prepare inputs and outputs
                         var inputs = new NDarray(inputOutput.Inputs);
                         var outputs = new NDarray(inputOutput.Outputs);
 
                         var model = new Sequential();
+
+                        //recurrent activation function required to be sigmoid or GPU training optimization cannot occur
                         var lstm =
                             new LSTM(
                                 units: hParams.Neurons,
                                 return_sequences: false,
                                 input_shape: new Shape(new int[] { inputs.shape[1], inputs.shape[2] }),
-                                activation: hParams.ActivationFunction);
+                                activation: hParams.ActivationFunction,
+                                recurrent_activation: "sigmoid");
+
+                        //lstm.Parameters.Add("l2", 0.0001f);
 
                         model.Add(lstm);
 
                         model.Add(new Dropout(hParams.Dropout));
                         model.Add(new Dense(inputs.shape[2]));
+
                         model.Add(new Activation(hParams.ActivationFunction));
-                        model.Compile(loss: hParams.LossFunction, optimizer: hParams.Optimizer, metrics: new string[] { "mae" });
+
+                        model.Compile(loss: hParams.LossFunction, optimizer: hParams.Optimizer, metrics: _config.HyperParams.Metrics.ToArray());
 
                         var history =
                             model.Fit(
@@ -105,7 +112,8 @@ namespace CryptoDataIngest.Workers
                                 epochs: hParams.Epochs,
                                 batch_size: hParams.BatchSize,
                                 verbose: 1,
-                                shuffle: false);
+                                shuffle: false)
+                                .HistoryLogs;
 
                         //create timestamped directory
                         var dt = DateTime.Now;
@@ -114,9 +122,13 @@ namespace CryptoDataIngest.Workers
                         Directory.CreateDirectory(outputDir);
 
                         //output history, weights, and model
-                        await File.WriteAllTextAsync(Path.Combine(outputDir, "history.json"), JsonConvert.SerializeObject(history.HistoryLogs.Values), ct);
-                        await File.WriteAllTextAsync(Path.Combine(outputDir, "model.json"), model.ToJson(), ct);
                         model.SaveWeight(Path.Combine(outputDir, "weights.h5"));
+
+                        //File.WriteAllText(Path.Combine(outputDir, "weights.json"), JsonConvert.SerializeObject(weights));
+                        var metrics = new { LastMetricMap = history.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.Last()), MetricsMap = history.ToDictionary(kvp => kvp.Key, kvp => kvp.Value) };
+                        File.WriteAllText(Path.Combine(outputDir, "metrics.json"), JsonConvert.SerializeObject(metrics));
+                        File.WriteAllText(Path.Combine(outputDir, "model.json"), model.ToJson());
+                        File.WriteAllText(Path.Combine(outputDir, "HyperParameters.json"), JsonConvert.SerializeObject(hParams));
                     }
 
                     //write new model info to out buffer

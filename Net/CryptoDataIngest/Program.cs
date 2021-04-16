@@ -39,6 +39,7 @@ namespace CryptoDataIngest
 
                     services
                         .AddSingleton(config)
+                        .AddSingleton<IModelSourceRepo, ModelSourceRepo>()
                         .AddSingleton<IModelFormatter, CsvDataFormatter>()
                         .AddSingleton<IDataBufferWriter<ModelSource>>(modelBuff)
                         .AddSingleton<IDataBufferWriter<OhlcRecordBaseBatch>>(sourceBuff)
@@ -57,11 +58,12 @@ namespace CryptoDataIngest
                         .AddSingleton<ITradingClientProvider, TradingClientProvider>()
                         .AddSingleton<IMinMaxScalerProvider, MinMaxScalerProvider>()
                         .AddHostedService<ModelTrainerWorker>()
-                        .AddHostedService<FetchTrainingDataTask>()
+                        .AddHostedService<FetchTrainingDataWorker>()
                         .AddHostedService<DataIngestWorker>()
                         .AddHostedService<DataPreProcessingWorker>()
                         .AddHostedService<PredictionWorker>()
                         .AddHostedService<TradingWorker>()
+                        .AddHostedService<MostRecentModelTask>()
                         .AddHostedService<FolderCleanUpWorker>();
                 });
     }
