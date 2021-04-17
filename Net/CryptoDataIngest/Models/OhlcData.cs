@@ -15,13 +15,13 @@ namespace CryptoDataIngest.Models
 
         public OhlcRecordBase(
             long date,
-            double open,
-            double high,
-            double low,
-            double close,
-            double weightedAverage,
-            double volume,
-            double quoteVolume)
+            float open,
+            float high,
+            float low,
+            float close,
+            float weightedAverage,
+            float volume,
+            float quoteVolume)
         {
             this.date = date;
             this.open = open;
@@ -36,19 +36,19 @@ namespace CryptoDataIngest.Models
         [JsonProperty]
         public long date { get; private set; }
         [JsonProperty]
-        public double open { get; private set; }
+        public float open { get; private set; }
         [JsonProperty]
-        public double high { get; private set; }
+        public float high { get; private set; }
         [JsonProperty]
-        public double low { get; private set; }
+        public float low { get; private set; }
         [JsonProperty]
-        public double close { get; private set; }
+        public float close { get; private set; }
         [JsonProperty]
-        public double weightedAverage { get; private set; }
+        public float weightedAverage { get; private set; }
         [JsonProperty]
-        public double volume { get; private set; }
+        public float volume { get; private set; }
         [JsonProperty]
-        public double quoteVolume { get; private set; }
+        public float quoteVolume { get; private set; }
     }
 
     internal class OhlcRecordBaseBatch
@@ -62,25 +62,17 @@ namespace CryptoDataIngest.Models
         public IEnumerable<OhlcRecordBase> Data { get; }
     }
 
-    //internal class SourceOhlcRecordBase : OhlcRecordBase
-    //{
-    //    public SourceOhlcRecordBase(long date, double open, double high, double low, double close, double weightedAverage, double volume, double quoteVolume)
-    //        : base(date, open, high, low, close, weightedAverage, volume, quoteVolume)
-    //    {
-    //    }
-    //}
-
     internal class ScaledOhlcRecord : OhlcRecordBase
     {
         public ScaledOhlcRecord(
             long date,
-            double open,
-            double high,
-            double low, 
-            double close, 
-            double weightedAverage,
-            double volume,
-            double quoteVolume) 
+            float open,
+            float high,
+            float low,
+            float close,
+            float weightedAverage,
+            float volume,
+            float quoteVolume) 
             : base(date, open, high, low, close, weightedAverage, volume, quoteVolume)
         {
         }
@@ -92,7 +84,7 @@ namespace CryptoDataIngest.Models
         private PredictedClose() { }
 
         public PredictedClose(
-            double close,
+            float close,
             long unixTime)
         {
             Close = close;
@@ -100,7 +92,7 @@ namespace CryptoDataIngest.Models
         }
 
         [JsonProperty]
-        public double Close { get; private set; }
+        public float Close { get; private set; }
         [JsonProperty]
         public long UnixTime { get; private set; }
     }

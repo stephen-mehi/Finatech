@@ -11,15 +11,15 @@ namespace CryptoDataIngest.Services
     internal class LstmInputOutput
     {
         public LstmInputOutput(
-            double[,,] inputs,
-            double[,,] outputs)
+            float[,,] inputs,
+            float[,,] outputs)
         {
             Inputs = inputs;
             Outputs = outputs;
         }
 
-        public double[,,] Inputs { get; }
-        public double[,,] Outputs { get; }
+        public float[,,] Inputs { get; }
+        public float[,,] Outputs { get; }
     }
 
     internal interface IDataConvolve
@@ -35,8 +35,8 @@ namespace CryptoDataIngest.Services
 
             int nConvolutions = localData.Count - lookBack - 1;
             //init 3d array 
-            var inputDataArray = new double[nConvolutions, lookBack, 5];
-            var outputDataArray = new double[nConvolutions, 1, 5];
+            var inputDataArray = new float[nConvolutions, lookBack, 5];
+            var outputDataArray = new float[nConvolutions, 1, 5];
 
             for (int i = 0; i < nConvolutions; i++)
             {

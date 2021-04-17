@@ -27,7 +27,7 @@ namespace CryptoDataIngest.Services
     internal interface IMinMaxScaler
     {
         IEnumerable<ScaledOhlcRecord> Scale(IReadOnlyList<OhlcRecordBase> data);
-        IEnumerable<double> DeScaleClose(IReadOnlyList<double> data);
+        IEnumerable<float> DeScaleClose(IReadOnlyList<float> data);
     }
 
     internal class MinMaxScaler : IMinMaxScaler
@@ -40,35 +40,35 @@ namespace CryptoDataIngest.Services
         {
             _min = minMaxModel.Minimum;
 
-            double percentAddition = 0.05;
+            float percentAddition = 0.05;
 
             //set max as 10% higher than actual max since having toruble predicting around max
-            double maxOpen = minMaxModel.Maximum.open + minMaxModel.Maximum.open * percentAddition;
-            double maxHigh = minMaxModel.Maximum.high + minMaxModel.Maximum.high * percentAddition;
-            double maxLow = minMaxModel.Maximum.low + minMaxModel.Maximum.low * percentAddition;
-            double maxClose = minMaxModel.Maximum.close + minMaxModel.Maximum.close * percentAddition;
-            double maxWeighted = minMaxModel.Maximum.weightedAverage + minMaxModel.Maximum.weightedAverage * percentAddition;
-            double maxVol = minMaxModel.Maximum.volume + minMaxModel.Maximum.volume * percentAddition;
-            double maxQuoteVol = minMaxModel.Maximum.quoteVolume + minMaxModel.Maximum.quoteVolume * percentAddition;
+            float maxOpen = minMaxModel.Maximum.open + minMaxModel.Maximum.open * percentAddition;
+            float maxHigh = minMaxModel.Maximum.high + minMaxModel.Maximum.high * percentAddition;
+            float maxLow = minMaxModel.Maximum.low + minMaxModel.Maximum.low * percentAddition;
+            float maxClose = minMaxModel.Maximum.close + minMaxModel.Maximum.close * percentAddition;
+            float maxWeighted = minMaxModel.Maximum.weightedAverage + minMaxModel.Maximum.weightedAverage * percentAddition;
+            float maxVol = minMaxModel.Maximum.volume + minMaxModel.Maximum.volume * percentAddition;
+            float maxQuoteVol = minMaxModel.Maximum.quoteVolume + minMaxModel.Maximum.quoteVolume * percentAddition;
 
             _max = new OhlcRecordBase(default, maxOpen, maxHigh, maxLow, maxClose, maxWeighted, maxVol, maxQuoteVol);
         }
 
-        private static IReadOnlyList<double> ScaleInternal(IEnumerable<double> input, double min, double max)
+        private static IReadOnlyList<float> ScaleInternal(IEnumerable<float> input, float min, float max)
         {
-            double rangeDiff = max - min;
+            float rangeDiff = max - min;
             var output = input.Select(x => (x - min) / (rangeDiff)).ToList();
             return output;
         }
 
-        private static IReadOnlyList<double> DeScaleInternal(IEnumerable<double> input, double min, double max)
+        private static IReadOnlyList<float> DeScaleInternal(IEnumerable<float> input, float min, float max)
         {
-            double rangeDiff = max - min;
+            float rangeDiff = max - min;
             var output = input.Select(x => (x * rangeDiff) + min).ToList();
             return output;
         }
 
-        public IEnumerable<double> DeScaleClose(IReadOnlyList<double> closeData)
+        public IEnumerable<float> DeScaleClose(IReadOnlyList<float> closeData)
         {
             var closes = DeScaleInternal(closeData, _min.close, _max.close);
             return closes;

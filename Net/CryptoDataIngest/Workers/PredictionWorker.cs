@@ -107,7 +107,7 @@ namespace CryptoDataIngest.Workers
 
                         var inputData = localLookBack.Select(x => new { x.high, x.low, x.open, x.weightedAverage, x.close });
                         //init 3d array 
-                        var inputDataArray = new double[1, _lookBackBatchSize, 5];
+                        var inputDataArray = new float[1, _lookBackBatchSize, 5];
 
                         //assign values to array
                         int index = 0;
@@ -134,7 +134,7 @@ namespace CryptoDataIngest.Workers
                             //calculate the unix time associated with prediction
                             long predictionUnixTime = localLookBack.Last().date + (int)_timeInterval;
 
-                            var denormalizedClose = scaler.DeScaleClose(new List<double>() { closePrediction }).Single();
+                            var denormalizedClose = scaler.DeScaleClose(new List<float>() { closePrediction }).Single();
 
                             var closePredictionModel = new PredictedClose(denormalizedClose, predictionUnixTime);
 

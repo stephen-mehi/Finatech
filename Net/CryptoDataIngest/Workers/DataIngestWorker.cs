@@ -24,6 +24,7 @@ namespace CryptoDataIngest.Workers
         private readonly string _outputDir;
         private readonly string _rootEthDir;
         private readonly string _lastTimeStampFilePath;
+        private readonly GlobalConfiguration _config;
         private bool _disposed;
 
         public DataIngestWorker(
@@ -33,6 +34,7 @@ namespace CryptoDataIngest.Workers
             IDataBufferWriter<OhlcRecordBase> bufferOut,
             GlobalConfiguration config)
         {
+            _config = config;
             _persistence = persistence;
             _logger = logger;
             _dataClient = dataClient;
@@ -94,8 +96,10 @@ namespace CryptoDataIngest.Workers
                         await File.WriteAllTextAsync(_lastTimeStampFilePath, endTime.ToString(), stoppingToken);
                     }
 
+                    //check for new data 4 times an interval
+                    var delaySeconds = TimeSpan.FromSeconds((int)Math.Round(0.25 * (int)_config.TimeInterval));
                     //check every 60 seconds for new data 
-                    await Task.Delay(TimeSpan.FromSeconds(90), stoppingToken);
+                    await Task.Delay(delaySeconds, stoppingToken);
 
                 }
                 catch (Exception e)

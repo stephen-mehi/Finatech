@@ -81,6 +81,7 @@ namespace CryptoDataIngest.Workers
 
             while (!stoppingToken.IsCancellationRequested)
             {
+                Console.WriteLine($"Starting to fetch training data for date range: {_dataTimeRanges.First().start} TO {_dataTimeRanges.Last().end}");
                 //create root data dir if doesn't exist
                 Directory.CreateDirectory(_outputDir);
                 Directory.CreateDirectory(_minMaxDir);
@@ -112,6 +113,8 @@ namespace CryptoDataIngest.Workers
                         if (hasLeftovers)
                             nBatches++;
 
+                        Console.WriteLine($"Incoming training data split into: {nBatches} batches");
+
                         for (int i = 0; i < nBatches; i++)
                         {
                             long currentStart = unixStart + (_batchSize * (int)_interval * i);
@@ -124,11 +127,17 @@ namespace CryptoDataIngest.Workers
                                 minMaxSelector.Assess(dataPoint);
                                 rawData.Add(dataPoint);
                             }
+
+                            Console.WriteLine($"Completed batch: {i}");
                         }
                     }
 
+                    Console.WriteLine("Completed fetching all training data. Writing to outgoing buffer..");
+
                     //write batch of data to out buffer
                     _bufferOut.AddData(new OhlcRecordBaseBatch(rawData), stoppingToken);
+
+                    Console.WriteLine("Completed writing to outgoing buffer. Persisting data..");
 
                     //format/supplement data
                     var formattedData =
@@ -139,8 +148,12 @@ namespace CryptoDataIngest.Workers
                     //write batch of new data to file. Create new file every day
                     await File.WriteAllTextAsync(_outputPath, formattedData, stoppingToken);
 
+                    Console.WriteLine("Completed persisting data. Persisting min max data..");
+
                     //persist min-max data
                     await File.WriteAllTextAsync(_minMaxPath, JsonConvert.SerializeObject(minMaxSelector.GetCurrentMinMax()), stoppingToken);
+
+                    Console.WriteLine("Completed persisting min max data.");
                 }
                 catch (Exception e)
                 {

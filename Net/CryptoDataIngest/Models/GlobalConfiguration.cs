@@ -27,7 +27,7 @@ namespace CryptoDataIngest.Models
                     optimizer: "adam",
                     dropout: 0.2,
                     batchSize: 32,
-                    epochs: 150,
+                    epochs: 110,
                     lookback: 6,
                     lookForward: 1,
                     randomSeed: 202,
@@ -46,7 +46,7 @@ namespace CryptoDataIngest.Models
                 //(new DateTime(2020, 3, 9), new DateTime(2020, 4, 16)),
                 //(new DateTime(2020, 5, 12), new DateTime(2020, 10, 26)),
 
-                (new DateTime(2021, 1, 1), DateTime.Now)
+                (new DateTime(2017, 1, 1), DateTime.Now)
             };
 
         public long FileExpiration { get; } = 60 * 60 * 24 * 5;

@@ -30,26 +30,26 @@ namespace CryptoDataIngest.Services
     {
         private readonly object _locker = new ();
 
-        private double _maxOpen;
-        private double _maxHigh;
-        private double _maxLow;
-        private double _maxClose;
-        private double _maxWeightedAvg;
-        private double _maxVol;
-        private double _maxQuoteVol;
+        private float _maxOpen;
+        private float _maxHigh;
+        private float _maxLow;
+        private float _maxClose;
+        private float _maxWeightedAvg;
+        private float _maxVol;
+        private float _maxQuoteVol;
 
-        private double _minOpen;
-        private double _minHigh;
-        private double _minLow;
-        private double _minClose;
-        private double _minWeightedAvg;
-        private double _minVol;
-        private double _minQuoteVol;
+        private float _minOpen;
+        private float _minHigh;
+        private float _minLow;
+        private float _minClose;
+        private float _minWeightedAvg;
+        private float _minVol;
+        private float _minQuoteVol;
 
         public MinMaxSelector()
         {
-            _maxOpen = _maxHigh = _maxLow = _maxClose = _maxWeightedAvg = _maxVol = _maxQuoteVol = double.MinValue;
-            _minOpen = _minHigh = _minLow = _minClose = _minWeightedAvg = _minVol = _minQuoteVol = double.MaxValue;
+            _maxOpen = _maxHigh = _maxLow = _maxClose = _maxWeightedAvg = _maxVol = _maxQuoteVol = float.MinValue;
+            _minOpen = _minHigh = _minLow = _minClose = _minWeightedAvg = _minVol = _minQuoteVol = float.MaxValue;
         }
 
         public void Assess(OhlcRecordBase dataPoint)
