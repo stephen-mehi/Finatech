@@ -40,16 +40,13 @@ namespace CryptoDataIngest.Services
         {
             _min = minMaxModel.Minimum;
 
-            float percentAddition = 0.05;
-
-            //set max as 10% higher than actual max since having toruble predicting around max
-            float maxOpen = minMaxModel.Maximum.open + minMaxModel.Maximum.open * percentAddition;
-            float maxHigh = minMaxModel.Maximum.high + minMaxModel.Maximum.high * percentAddition;
-            float maxLow = minMaxModel.Maximum.low + minMaxModel.Maximum.low * percentAddition;
-            float maxClose = minMaxModel.Maximum.close + minMaxModel.Maximum.close * percentAddition;
-            float maxWeighted = minMaxModel.Maximum.weightedAverage + minMaxModel.Maximum.weightedAverage * percentAddition;
-            float maxVol = minMaxModel.Maximum.volume + minMaxModel.Maximum.volume * percentAddition;
-            float maxQuoteVol = minMaxModel.Maximum.quoteVolume + minMaxModel.Maximum.quoteVolume * percentAddition;
+            float maxOpen = minMaxModel.Maximum.open + minMaxModel.Maximum.open;
+            float maxHigh = minMaxModel.Maximum.high + minMaxModel.Maximum.high;
+            float maxLow = minMaxModel.Maximum.low + minMaxModel.Maximum.low;
+            float maxClose = minMaxModel.Maximum.close + minMaxModel.Maximum.close;
+            float maxWeighted = minMaxModel.Maximum.weightedAverage + minMaxModel.Maximum.weightedAverage;
+            float maxVol = minMaxModel.Maximum.volume + minMaxModel.Maximum.volume;
+            float maxQuoteVol = minMaxModel.Maximum.quoteVolume + minMaxModel.Maximum.quoteVolume;
 
             _max = new OhlcRecordBase(default, maxOpen, maxHigh, maxLow, maxClose, maxWeighted, maxVol, maxQuoteVol);
         }

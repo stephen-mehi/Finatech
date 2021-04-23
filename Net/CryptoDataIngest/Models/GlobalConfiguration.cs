@@ -27,7 +27,7 @@ namespace CryptoDataIngest.Models
                     optimizer: "adam",
                     dropout: 0.2,
                     batchSize: 32,
-                    epochs: 110,
+                    epochs: 80,
                     lookback: 6,
                     lookForward: 1,
                     randomSeed: 202,
