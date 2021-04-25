@@ -26,13 +26,14 @@ namespace CryptoDataIngest
                 .ConfigureServices((hostContext, services) =>
                 {
                     np.arange(1);
+                    PythonEngine.Initialize();
                     PythonEngine.BeginAllowThreads();
 
                     //init buffers
                     var modelBuff = new DataBuffer<ModelSource>();
                     var sourceBuff = new DataBuffer<OhlcRecordBaseBatch>();
-                    var ingestBuff = new DataBuffer<OhlcRecordBase>();
-                    var preProcBuff = new DataBuffer<ScaledOhlcRecord>();
+                    var ingestBuff = new DataBuffer<(TimeIntervalEnum, OhlcRecordBase)>();
+                    var preProcBuff = new DataBuffer<(TimeIntervalEnum, ScaledOhlcRecord)>();
                     var predBuff = new DataBuffer<PredictedClose>();
 
                     var config = new GlobalConfiguration();
@@ -43,13 +44,13 @@ namespace CryptoDataIngest
                         .AddSingleton<IModelFormatter, CsvDataFormatter>()
                         .AddSingleton<IDataBufferWriter<ModelSource>>(modelBuff)
                         .AddSingleton<IDataBufferWriter<OhlcRecordBaseBatch>>(sourceBuff)
-                        .AddSingleton<IDataBufferWriter<OhlcRecordBase>>(ingestBuff)
-                        .AddSingleton<IDataBufferWriter<ScaledOhlcRecord>>(preProcBuff)
+                        .AddSingleton<IDataBufferWriter<(TimeIntervalEnum, OhlcRecordBase)>>(ingestBuff)
+                        .AddSingleton<IDataBufferWriter<(TimeIntervalEnum, ScaledOhlcRecord)>>(preProcBuff)
                         .AddSingleton<IDataBufferWriter<PredictedClose>>(predBuff)
                         .AddSingleton<IDataBufferReader<ModelSource>>(modelBuff)
                         .AddSingleton<IDataBufferReader<OhlcRecordBaseBatch>>(sourceBuff)
-                        .AddSingleton<IDataBufferReader<OhlcRecordBase>>(ingestBuff)
-                        .AddSingleton<IDataBufferReader<ScaledOhlcRecord>>(preProcBuff)
+                        .AddSingleton<IDataBufferReader<(TimeIntervalEnum, OhlcRecordBase)>>(ingestBuff)
+                        .AddSingleton<IDataBufferReader<(TimeIntervalEnum, ScaledOhlcRecord)>>(preProcBuff)
                         .AddSingleton<IDataBufferReader<PredictedClose>>(predBuff)
                         .AddSingleton<IDataPersistence, DataPersistence>()
                         .AddSingleton<ICryptoDataClient, CryptoDataClient>()

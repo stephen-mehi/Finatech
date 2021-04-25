@@ -14,9 +14,9 @@ namespace CryptoDataIngest.Models
             RootDataDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "ETH");
             ProcessedDataDirectory = Path.Combine(RootDataDirectory, "NormalizedData");
             RawDataPathDirectory = Path.Combine(RootDataDirectory, "Data");
-            TrainingDataPath = Path.Combine(RootDataDirectory, "TrainingData", "training.csv");
+            TrainingDataDirectory = Path.Combine(RootDataDirectory, "TrainingData");
             PredictionDataDirectory = Path.Combine(RootDataDirectory, "Predictions");
-            MinMaxDataPath = Path.Combine(RootDataDirectory, "MinMaxData", "minmax.json");
+            MinMaxDataDirectory = Path.Combine(RootDataDirectory, "MinMaxData");
             ModelDirectory = Path.Combine(RootDataDirectory, "Model");
 
             HyperParams =
@@ -27,7 +27,7 @@ namespace CryptoDataIngest.Models
                     optimizer: "adam",
                     dropout: 0.2,
                     batchSize: 32,
-                    epochs: 80,
+                    epochs: 1,
                     lookback: 6,
                     lookForward: 1,
                     randomSeed: 202,
@@ -35,7 +35,7 @@ namespace CryptoDataIngest.Models
 
         }
 
-        public static IReadOnlyList<(DateTime start, DateTime end)> TrainingDataTimePeriods  => 
+        public static IReadOnlyList<(DateTime start, DateTime end)> TrainingDataTimePeriods =>
             new List<(DateTime start, DateTime end)>()
             {
                 //(new DateTime(2018, 5, 29), new DateTime(2018, 12, 31)),
@@ -46,19 +46,21 @@ namespace CryptoDataIngest.Models
                 //(new DateTime(2020, 3, 9), new DateTime(2020, 4, 16)),
                 //(new DateTime(2020, 5, 12), new DateTime(2020, 10, 26)),
 
-                (new DateTime(2017, 1, 1), DateTime.Now)
+                //(new DateTime(2017, 1, 1), DateTime.Now)
+                (new DateTime(2021, 1, 1), DateTime.Now)
             };
 
         public long FileExpiration { get; } = 60 * 60 * 24 * 5;
-        public TimeIntervalEnum TimeInterval { get; } = TimeIntervalEnum.fifteenMinute;
+        public IReadOnlyList<TimeIntervalEnum> TimeIntervals { get; } = new List<TimeIntervalEnum>() { TimeIntervalEnum.fiveMinute, TimeIntervalEnum.fifteenMinute, TimeIntervalEnum.thirtyMinute };
         public string RootDataDirectory { get; }
         public string RawDataPathDirectory { get; }
         public string ProcessedDataDirectory { get; }
         public string PredictionDataDirectory { get; }
-        public string MinMaxDataPath { get; }
-        public string TrainingDataPath { get; }
+        public string MinMaxDataDirectory { get; }
+        public string TrainingDataDirectory { get; }
         public string ModelDirectory { get; }
         public int ModelRetrainDelayHours { get; } = 6;
         public HyperParameters HyperParams { get; }
+        public object PythonLock { get; } = new object();
     }
 }

@@ -2,6 +2,7 @@ using CryptoDataIngest.Models;
 using CryptoDataIngest.Services;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -16,8 +17,9 @@ namespace CryptoDataIngest.Workers
     {
         private readonly ILogger<DataIngestWorker> _logger;
         private readonly ICryptoDataClient _dataClient;
-        private readonly IDataBufferWriter<OhlcRecordBase> _bufferOut;
-        private readonly TimeIntervalEnum _batchInterval;
+        private readonly IDataBufferWriter<(TimeIntervalEnum, OhlcRecordBase)> _bufferOut;
+        private readonly IReadOnlyList<TimeIntervalEnum> _intervals;
+        private readonly int _dataReadLoopDelay;
         private readonly IDataPersistence _persistence;
         private readonly string _cryptoSymbol;
         private readonly string _currencySymbol;
@@ -31,7 +33,7 @@ namespace CryptoDataIngest.Workers
             ILogger<DataIngestWorker> logger,
             ICryptoDataClient dataClient,
             IDataPersistence persistence,
-            IDataBufferWriter<OhlcRecordBase> bufferOut,
+            IDataBufferWriter<(TimeIntervalEnum, OhlcRecordBase)> bufferOut,
             GlobalConfiguration config)
         {
             _config = config;
@@ -40,20 +42,22 @@ namespace CryptoDataIngest.Workers
             _dataClient = dataClient;
             _bufferOut = bufferOut;
 
-            _batchInterval = config.TimeInterval;
+            _intervals = config.TimeIntervals;
             _cryptoSymbol = "ETH";
             _currencySymbol = "USDT";
 
             _rootEthDir = config.RootDataDirectory;
             _outputDir = config.RawDataPathDirectory;
             _lastTimeStampFilePath = Path.Combine(_rootEthDir, "LastTimeStamp.txt");
+
+            _dataReadLoopDelay = _intervals.Select(x => (int)x).Min();
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             //create last timestamp file if it doesn't exist. init with 0
             if (!File.Exists(_lastTimeStampFilePath))
-                await File.WriteAllTextAsync(_lastTimeStampFilePath, "0", stoppingToken);
+                await File.WriteAllTextAsync(_lastTimeStampFilePath, JsonConvert.SerializeObject(_config.TimeIntervals.ToDictionary(x => x, x => (long)0)), stoppingToken);
 
 
             //continue reading batches of data from api until stopped
@@ -61,46 +65,52 @@ namespace CryptoDataIngest.Workers
             {
                 try
                 {
-                    //calculate current unix time
-                    long currentUnixTimestamp = (long)(DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1))).TotalSeconds;
-
                     //read last logged data timestamp
-                    long lastTimeStamp = long.Parse(File.ReadAllText(_lastTimeStampFilePath));
-                    //if no last ts, just grab last intervals worth, with buffer time to ensure data grabbed
-                    if (lastTimeStamp == 0)
-                        lastTimeStamp = currentUnixTimestamp - (int)_batchInterval - 60;
+                    var lastTimeStampMap = JsonConvert.DeserializeObject<Dictionary<TimeIntervalEnum, long>>(File.ReadAllText(_lastTimeStampFilePath));
 
-                    //end time is at most 1000*interval
-                    var endTime = lastTimeStamp + (1000 * (int)_batchInterval);
-                    //cieling to current time if would extend into future
-                    if (currentUnixTimestamp < endTime)
-                        endTime = currentUnixTimestamp;
-
-                    //fetch batch of data filtering for data occuring after last logged timestamp
-                    var rawData = await _dataClient.GetDataAsync(_cryptoSymbol, _currencySymbol, _batchInterval, lastTimeStamp, endTime, stoppingToken);
-                    //filter out bad data
-                    var cleanedData = rawData.Where(x => x.date != 0);
-
-                    //only process and post if some data found
-                    if (cleanedData.Any())
+                    foreach (var interval in _intervals)
                     {
-                        //post to out buffer
-                        foreach (var item in cleanedData)
-                            _bufferOut.AddData(item, stoppingToken);
+                        //calculate current unix time
+                        long currentUnixTimestamp = (long)(DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1))).TotalSeconds;
 
-                        await _persistence.WriteToDirectoryAsync(_outputDir, cleanedData, stoppingToken);
+                        var lastTimeStamp = lastTimeStampMap[interval];
 
-                        //delete old last timestamp file
-                        File.Delete(_lastTimeStampFilePath);
-                        //create new one with last data timestamp read
-                        await File.WriteAllTextAsync(_lastTimeStampFilePath, endTime.ToString(), stoppingToken);
+                        //if no last ts, just grab last intervals worth, with buffer time to ensure data grabbed
+                        if (lastTimeStamp == 0)
+                            lastTimeStamp = currentUnixTimestamp - (int)interval - 60;
+
+                        //end time is at most 1000*interval
+                        var endTime = lastTimeStamp + (1000 * (int)interval);
+                        //cieling to current time if would extend into future
+                        if (currentUnixTimestamp < endTime)
+                            endTime = currentUnixTimestamp;
+
+                        //fetch batch of data filtering for data occuring after last logged timestamp
+                        var rawData = await _dataClient.GetDataAsync(_cryptoSymbol, _currencySymbol, interval, lastTimeStamp, endTime, stoppingToken);
+                        //filter out bad data
+                        var cleanedData = rawData.Where(x => x.date != 0);
+
+                        //only process and post if some data found
+                        if (cleanedData.Any())
+                        {
+                            //post to out buffer
+                            foreach (var item in cleanedData)
+                                _bufferOut.AddData((interval, item), stoppingToken);
+
+                            await _persistence.WriteToDirectoryAsync(_outputDir, cleanedData, stoppingToken);
+
+                            //delete old last timestamp file
+                            File.Delete(_lastTimeStampFilePath);
+                            //create new one with last data timestamp read
+                            lastTimeStampMap[interval] = endTime;
+                            await File.WriteAllTextAsync(_lastTimeStampFilePath, JsonConvert.SerializeObject(lastTimeStampMap), stoppingToken);
+
+                        }
                     }
 
-                    //check for new data 4 times an interval
-                    var delaySeconds = TimeSpan.FromSeconds((int)Math.Round(0.25 * (int)_config.TimeInterval));
-                    //check every 60 seconds for new data 
+                    //check for new data based on the minimum configured time interval 
+                    var delaySeconds = TimeSpan.FromSeconds(_dataReadLoopDelay);
                     await Task.Delay(delaySeconds, stoppingToken);
-
                 }
                 catch (Exception e)
                 {

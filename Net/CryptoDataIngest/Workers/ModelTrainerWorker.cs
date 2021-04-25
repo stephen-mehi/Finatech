@@ -21,7 +21,6 @@ namespace CryptoDataIngest.Workers
 {
     internal class ModelTrainerWorker : BackgroundService
     {
-
         private readonly IDataBufferReader<OhlcRecordBaseBatch> _bufferIn;
         private readonly IDataBufferWriter<ModelSource> _bufferOut;
         private readonly ILogger _logger;
@@ -53,9 +52,13 @@ namespace CryptoDataIngest.Workers
         {
             Directory.CreateDirectory(_config.ModelDirectory);
 
+            Console.WriteLine($"Waiting for data batch in order to start training models. ");
+
             //pull all data in
             await foreach (var dataBatch in _bufferIn.GetDataAsync(ct))
             {
+                Console.WriteLine($"Starting to train model for interval: {dataBatch.Interval}");
+
                 try
                 {
                     var minMaxSelector = _minMaxSelectorProv.Get();
@@ -69,14 +72,26 @@ namespace CryptoDataIngest.Workers
 
                     //get scaler
                     var minMaxModel = minMaxSelector.GetCurrentMinMax();
+                    Console.WriteLine($"Scaling data for interval: {dataBatch.Interval}");
+
                     var scaler = _scalerProv.Get(minMaxModel);
 
                     var scaledData = scaler.Scale(localData);
                     var hParams = _config.HyperParams;
 
                     var inputOutput = _convolver.Convolve(scaledData, hParams.LookBack, hParams.LookForward);
-                    string outputDir = string.Empty;
 
+                    //create timestamped directory
+                    var dt = DateTime.Now;
+                    string ts = $"{dt.Month}_{dt.Day}_{dt.Year}_{dt.Hour}_{dt.Minute}_{dt.Second}";
+                    var outputDir = Path.Combine(_config.ModelDirectory, dataBatch.Interval.ToString(), ts);
+                    Directory.CreateDirectory(outputDir);
+
+                    Dictionary<string, double> lastMetrics;
+                    Dictionary<string, double[]> metricsMap;
+                    string modelJson;
+
+                    lock(_config.PythonLock)
                     using (Py.GIL())
                     {
                         //prepare inputs and outputs
@@ -105,6 +120,8 @@ namespace CryptoDataIngest.Workers
 
                         model.Compile(loss: hParams.LossFunction, optimizer: hParams.Optimizer, metrics: _config.HyperParams.Metrics.ToArray());
 
+                        Console.WriteLine($"Starting to train for interval: {dataBatch.Interval}...");
+
                         var history =
                             model.Fit(
                                 x: inputs,
@@ -115,24 +132,36 @@ namespace CryptoDataIngest.Workers
                                 shuffle: false)
                                 .HistoryLogs;
 
-                        //create timestamped directory
-                        var dt = DateTime.Now;
-                        string ts = $"{dt.Month}_{dt.Day}_{dt.Year}_{dt.Hour}_{dt.Minute}_{dt.Second}";
-                        outputDir = Path.Combine(_config.ModelDirectory, ts);
-                        Directory.CreateDirectory(outputDir);
+
+                        Console.WriteLine($"Completed training for interval: {dataBatch.Interval}. ");
+
+                        Console.WriteLine($"Saving weights for interval: {dataBatch.Interval}...");
 
                         //output history, weights, and model
-                        model.SaveWeight(Path.Combine(outputDir, "weights.h5"));
+                        model.SaveWeight(Path.Combine(outputDir, $"weights.h5"));
 
-                        //File.WriteAllText(Path.Combine(outputDir, "weights.json"), JsonConvert.SerializeObject(weights));
-                        var metrics = new { LastMetricMap = history.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.Last()), MetricsMap = history.ToDictionary(kvp => kvp.Key, kvp => kvp.Value) };
-                        File.WriteAllText(Path.Combine(outputDir, "metrics.json"), JsonConvert.SerializeObject(metrics));
-                        File.WriteAllText(Path.Combine(outputDir, "model.json"), model.ToJson());
-                        File.WriteAllText(Path.Combine(outputDir, "HyperParameters.json"), JsonConvert.SerializeObject(hParams));
+                        lastMetrics = history.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.Last());
+                        metricsMap = history.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+                        modelJson = model.ToJson();
                     }
 
+                    Console.WriteLine($"Completed saving weights for interval: {dataBatch.Interval} Saving model, metrics, and hyper params...");
+
+                    //File.WriteAllText(Path.Combine(outputDir, "weights.json"), JsonConvert.SerializeObject(weights));
+                    var metrics = new { LastMetricMap = lastMetrics, MetricsMap = metricsMap };
+                    File.WriteAllText(Path.Combine(outputDir, $"metrics.json"), JsonConvert.SerializeObject(metrics));
+                    File.WriteAllText(Path.Combine(outputDir, $"model.json"), modelJson);
+                    File.WriteAllText(Path.Combine(outputDir, $"HyperParameters.json"), JsonConvert.SerializeObject(hParams));
+
+                    Console.WriteLine($"Completed saving model, metrics, and hyper params for interval: {dataBatch.Interval} Posting model to out buffer...");
+
+                    Console.WriteLine($"Completed saving model, metrics, and hyper params for interval: {dataBatch.Interval} Posting model to out buffer...");
+
                     //write new model info to out buffer
-                    _bufferOut.AddData(new ModelSource(outputDir), ct);
+                    _bufferOut.AddData(new ModelSource(dt, outputDir, dataBatch.Interval), ct);
+
+                    Console.WriteLine($"Completed posting model to out buffer for interval: {dataBatch.Interval}");
+
                 }
                 catch (Exception e)
                 {

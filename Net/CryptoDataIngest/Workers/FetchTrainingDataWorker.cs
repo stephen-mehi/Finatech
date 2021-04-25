@@ -19,13 +19,11 @@ namespace CryptoDataIngest.Workers
         private readonly ILogger<DataIngestWorker> _logger;
         private readonly ICryptoDataClient _dataClient;
         private readonly IModelFormatter _dataFormatter;
-        private readonly TimeIntervalEnum _interval;
+        private readonly IReadOnlyList<TimeIntervalEnum> _intervals;
         private readonly string _cryptoSymbol;
         private readonly string _currencySymbol;
         private readonly string _outputDir;
         private readonly string _outputPath;
-        private readonly string _minMaxDir;
-        private readonly string _minMaxPath;
         private readonly GlobalConfiguration _config;
         private IReadOnlyList<(DateTime start, DateTime end)> _dataTimeRanges;
         private readonly IDataBufferWriter<OhlcRecordBaseBatch> _bufferOut;
@@ -50,118 +48,129 @@ namespace CryptoDataIngest.Workers
             _dataFormatter = dataFormatter;
             _dataClient = dataClient;
 
-            _interval = config.TimeInterval;
+            _intervals = config.TimeIntervals;
             _cryptoSymbol = "ETH";
             _currencySymbol = "USDT";
 
             _minMaxSelectorProv = minMaxSelectorProv;
 
-            _outputDir = Path.GetDirectoryName(config.TrainingDataPath);
-            _outputPath = config.TrainingDataPath;
-            _minMaxDir = Path.GetDirectoryName(config.MinMaxDataPath);
-            _minMaxPath = config.MinMaxDataPath;
+            _outputDir = Path.GetDirectoryName(config.TrainingDataDirectory);
+            _outputPath = config.TrainingDataDirectory;
             _dataTimeRanges = GlobalConfiguration.TrainingDataTimePeriods;
 
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken = default)
         {
-            //get existing model ts and paths
-            var modelTimestampMap = _modelSourceRepo.ListModelSources();
-
-            //if any models found
-            if(modelTimestampMap.Count > 0)
-            {
-                var timeDiffHours = (DateTime.Now - modelTimestampMap.Keys.Max());
-
-                //model exists that is not older than retrain delay, wait difference amount of time before getting data for retrain
-                if (timeDiffHours.TotalHours < _config.ModelRetrainDelayHours)
-                    await Task.Delay(timeDiffHours, stoppingToken);
-            }
-
             while (!stoppingToken.IsCancellationRequested)
             {
                 Console.WriteLine($"Starting to fetch training data for date range: {_dataTimeRanges.First().start} TO {_dataTimeRanges.Last().end}");
                 //create root data dir if doesn't exist
                 Directory.CreateDirectory(_outputDir);
-                Directory.CreateDirectory(_minMaxDir);
 
                 if (File.Exists(_outputPath))
                     File.Delete(_outputPath);
-
-                if (File.Exists(_minMaxPath))
-                    File.Delete(_minMaxPath);
 
                 var minMaxSelector = _minMaxSelectorProv.Get();
 
                 try
                 {
-                    var rawData = new List<OhlcRecordBase>();
+                    //get any recent models that are not expired for this time interval
+                    var recentModels =
+                        _modelSourceRepo
+                        .ListModelSources()
+                        .GroupBy(x => x.Interval)
+                        .Select(x => x.OrderByDescending(x => x.Timestamp).FirstOrDefault())
+                        .Where(x => (DateTime.Now - x.Timestamp).TotalHours < _config.ModelRetrainDelayHours)
+                        .ToDictionary(x => x.Interval, x => x.Timestamp);
 
-                    foreach (var (start, end) in _dataTimeRanges)
+                    foreach (var interval in _intervals)
                     {
-                        long unixStart = (long)start.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
-                        long unixEnd = (long)end.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
+                        //if any non-expired models found for this interval, just skip loop
+                        if (recentModels.TryGetValue(interval, out var recentModel))
+                            continue;
 
-                        long range = unixEnd - unixStart;
-                        long nRecords = range / (int)_interval;
-                        long nBatches = nRecords / _batchSize;
-                        long leftovers = nRecords % _batchSize;
-                        bool hasLeftovers = leftovers > 0;
+                        string minMaxPath = Path.Combine(_config.MinMaxDataDirectory, $"minmax_{interval}.json");
 
-                        //add additional loop if have leftovers
-                        if (hasLeftovers)
-                            nBatches++;
+                        //delete old minmax data
+                        if (File.Exists(minMaxPath))
+                            File.Delete(minMaxPath);
 
-                        Console.WriteLine($"Incoming training data split into: {nBatches} batches");
+                        //delete all min max data if any exists
+                        if (Directory.Exists(_config.MinMaxDataDirectory))
+                            foreach (FileInfo file in (new DirectoryInfo(_config.MinMaxDataDirectory)).GetFiles()) file.Delete();
 
-                        for (int i = 0; i < nBatches; i++)
+                        Directory.CreateDirectory(_config.MinMaxDataDirectory);
+
+                        Console.WriteLine($"Starting to get data for time interval: {interval}");
+                        var rawData = new List<OhlcRecordBase>();
+
+                        foreach (var (start, end) in _dataTimeRanges)
                         {
-                            long currentStart = unixStart + (_batchSize * (int)_interval * i);
-                            long currentEnd = i == nBatches && hasLeftovers ? currentStart + (leftovers * (int)_interval) : currentStart + (_batchSize * (int)_interval);
-                            //fetch batch of data filtering for data occuring after last logged timestamp
-                            var batchedData = await _dataClient.GetDataAsync(_cryptoSymbol, _currencySymbol, _interval, currentStart, currentEnd, stoppingToken);
+                            long unixStart = (long)start.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
+                            long unixEnd = (long)end.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
 
-                            foreach (var dataPoint in batchedData)
+                            long range = unixEnd - unixStart;
+                            long nRecords = range / (int)interval;
+                            long nBatches = nRecords / _batchSize;
+                            long leftovers = nRecords % _batchSize;
+                            bool hasLeftovers = leftovers > 0;
+
+                            //add additional loop if have leftovers
+                            if (hasLeftovers)
+                                nBatches++;
+
+                            Console.WriteLine($"Incoming training data split into: {nBatches} batches");
+
+                            for (int i = 0; i < nBatches; i++)
                             {
-                                minMaxSelector.Assess(dataPoint);
-                                rawData.Add(dataPoint);
-                            }
+                                long currentStart = unixStart + (_batchSize * (int)interval * i);
+                                long currentEnd = i == nBatches && hasLeftovers ? currentStart + (leftovers * (int)interval) : currentStart + (_batchSize * (int)interval);
+                                //fetch batch of data filtering for data occuring after last logged timestamp
+                                var batchedData = await _dataClient.GetDataAsync(_cryptoSymbol, _currencySymbol, interval, currentStart, currentEnd, stoppingToken);
 
-                            Console.WriteLine($"Completed batch: {i}");
+                                foreach (var dataPoint in batchedData)
+                                {
+                                    minMaxSelector.Assess(dataPoint);
+                                    rawData.Add(dataPoint);
+                                }
+
+                                Console.WriteLine($"Completed batch: {i}");
+                            }
                         }
+
+                        Console.WriteLine($"Completed fetching all training data for interval: {interval}. Writing to outgoing buffer..");
+
+                        //write batch of data to out buffer
+                        _bufferOut.AddData(new OhlcRecordBaseBatch(rawData, interval), stoppingToken);
+
+                        Console.WriteLine($"Completed writing to outgoing buffer for interval: {interval}. Persisting data..");
+
+                        //format/supplement data
+                        var formattedData =
+                            $"{_dataFormatter.GetHeader<ScaledOhlcRecord>()}" +
+                            $"{Environment.NewLine}" +
+                            $"{string.Join(Environment.NewLine, _dataFormatter.Format(rawData))}";
+
+                        //write batch of new data to file. Create new file every day
+                        await File.WriteAllTextAsync(Path.Combine(_outputPath, $"training_{interval}.csv"), formattedData, stoppingToken);
+
+                        Console.WriteLine($"Completed persisting data for interval: {interval}. Persisting min max data..");
+
+                        //persist min-max data
+                        await File.WriteAllTextAsync(minMaxPath, JsonConvert.SerializeObject(minMaxSelector.GetCurrentMinMax()), stoppingToken);
+
+                        Console.WriteLine($"Completed persisting min max data for interval: {interval}.");
                     }
 
-                    Console.WriteLine("Completed fetching all training data. Writing to outgoing buffer..");
-
-                    //write batch of data to out buffer
-                    _bufferOut.AddData(new OhlcRecordBaseBatch(rawData), stoppingToken);
-
-                    Console.WriteLine("Completed writing to outgoing buffer. Persisting data..");
-
-                    //format/supplement data
-                    var formattedData =
-                        $"{_dataFormatter.GetHeader<ScaledOhlcRecord>()}" +
-                        $"{Environment.NewLine}" +
-                        $"{string.Join(Environment.NewLine, _dataFormatter.Format(rawData))}";
-
-                    //write batch of new data to file. Create new file every day
-                    await File.WriteAllTextAsync(_outputPath, formattedData, stoppingToken);
-
-                    Console.WriteLine("Completed persisting data. Persisting min max data..");
-
-                    //persist min-max data
-                    await File.WriteAllTextAsync(_minMaxPath, JsonConvert.SerializeObject(minMaxSelector.GetCurrentMinMax()), stoppingToken);
-
-                    Console.WriteLine("Completed persisting min max data.");
                 }
                 catch (Exception e)
                 {
                     _logger.LogError(e, $"Failed to fetch OHLC data for training ");
                 }
 
-                //run every n hours
-                await Task.Delay(TimeSpan.FromHours(_config.ModelRetrainDelayHours), stoppingToken);
+                //check if retrain needs to happen every hour
+                await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
             }
         }
 

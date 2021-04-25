@@ -28,19 +28,19 @@ namespace CryptoDataIngest.Workers
 
         protected override Task ExecuteAsync(CancellationToken stoppingToken = default)
         {
+            var models =
+                _modelSourceRepo
+                .ListModelSources()
+                .GroupBy(x => x.Interval)
+                .Select(x => x.OrderByDescending(x => x.Timestamp).FirstOrDefault());
+
             //get existing model ts and paths
-            var modelTimestampMap = _modelSourceRepo.ListModelSources();
-            //if any
-            if(modelTimestampMap.Count > 0)
-            {
-                var mostRecentModelTs = modelTimestampMap.Keys.Max();
-                var timeDiffHours = (DateTime.Now - mostRecentModelTs);
+            var recentModels =
+                models
+                .Where(x => (DateTime.Now - x.Timestamp).TotalHours < _config.ModelRetrainDelayHours);
 
-                //model exists that is not older than retrain delay, add model source to out buffer
-                if (timeDiffHours.TotalHours < _config.ModelRetrainDelayHours)
-                    _bufferOut.AddData(new ModelSource(modelTimestampMap[mostRecentModelTs]), stoppingToken);
-            }
-
+            foreach (var model in recentModels)
+                _bufferOut.AddData(model, stoppingToken);
 
             return Task.CompletedTask;
         }

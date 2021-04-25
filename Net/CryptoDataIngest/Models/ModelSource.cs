@@ -8,11 +8,18 @@ namespace CryptoDataIngest.Models
 {
     internal class ModelSource
     {
-        public ModelSource(string modelDir)
+        public ModelSource(
+            DateTime timestamp,
+            string path,
+            TimeIntervalEnum interval)
         {
-            ModelDirectory = modelDir;
+            Timestamp = timestamp;
+            ModelDirectory = path;
+            Interval = interval;
         }
 
+        public DateTime Timestamp { get; }
         public string ModelDirectory { get; }
+        public TimeIntervalEnum Interval { get; }
     }
 }

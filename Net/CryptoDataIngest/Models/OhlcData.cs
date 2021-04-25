@@ -54,12 +54,15 @@ namespace CryptoDataIngest.Models
     internal class OhlcRecordBaseBatch
     {
         public OhlcRecordBaseBatch(
-            IEnumerable<OhlcRecordBase> data)
+            IEnumerable<OhlcRecordBase> data,
+            TimeIntervalEnum interval)
         {
             Data = data;
+            Interval = interval;
         }
 
         public IEnumerable<OhlcRecordBase> Data { get; }
+        public TimeIntervalEnum Interval { get; }
     }
 
     internal class ScaledOhlcRecord : OhlcRecordBase
@@ -85,16 +88,19 @@ namespace CryptoDataIngest.Models
 
         public PredictedClose(
             float close,
-            long unixTime)
+            long unixTime,
+            TimeIntervalEnum interval)
         {
             Close = close;
             UnixTime = unixTime;
+            TimeInterval = interval.ToString();
         }
 
         [JsonProperty]
         public float Close { get; private set; }
         [JsonProperty]
         public long UnixTime { get; private set; }
+        public string TimeInterval { get; private set; }
     }
 
 }

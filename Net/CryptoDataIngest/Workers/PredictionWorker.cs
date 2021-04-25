@@ -22,21 +22,21 @@ namespace CryptoDataIngest.Workers
 
         private readonly ILogger<PredictionWorker> _logger;
         private readonly IDataBufferReader<ModelSource> _modelBufferIn;
-        private readonly IDataBufferReader<ScaledOhlcRecord> _bufferIn;
+        private readonly IDataBufferReader<(TimeIntervalEnum, ScaledOhlcRecord)> _bufferIn;
         private readonly IDataBufferWriter<PredictedClose> _bufferOut;
-        private BaseModel _model;
+        private readonly Dictionary<TimeIntervalEnum, ModelSource> _models = new();
         private readonly int _lookBackBatchSize;
-        private readonly TimeIntervalEnum _timeInterval;
         private readonly IDataPersistence _persistence;
         private readonly IMinMaxScalerProvider _scalerProv;
         private readonly string _outputDir;
         private bool _disposed;
         private readonly GlobalConfiguration _config;
         private Task<ModelSource> _nextModelTask;
+        private readonly IReadOnlyDictionary<TimeIntervalEnum, Queue<ScaledOhlcRecord>> _lookBackQueues;
 
         public PredictionWorker(
             ILogger<PredictionWorker> logger,
-            IDataBufferReader<ScaledOhlcRecord> bufferIn,
+            IDataBufferReader<(TimeIntervalEnum, ScaledOhlcRecord)> bufferIn,
             IDataBufferReader<ModelSource> modelBufferIn,
             IDataBufferWriter<PredictedClose> bufferOut,
             GlobalConfiguration config,
@@ -46,29 +46,43 @@ namespace CryptoDataIngest.Workers
             _config = config;
             _scalerProv = scalerProv;
             _persistence = persistence;
-            _timeInterval = config.TimeInterval;
             _lookBackBatchSize = config.HyperParams.LookBack;
             _modelBufferIn = modelBufferIn;
             _bufferIn = bufferIn;
             _bufferOut = bufferOut;
             _logger = logger;
             _outputDir = config.PredictionDataDirectory;
+
+            var localQueues =
+                config
+                .TimeIntervals
+                .ToDictionary(x => x, x => new Queue<ScaledOhlcRecord>());
+
+            _lookBackQueues = localQueues;
+        }
+
+        private void AddOrUpdateModels(TimeIntervalEnum interval, ModelSource model)
+        {
+            if (_models.ContainsKey(interval))
+                _models[interval] = model;
+            else
+                _models.Add(interval, model);
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            var lookBackQueue = new Queue<ScaledOhlcRecord>();
+            Console.WriteLine($"Waiting for first model info to be available in order to perform predictions..");
 
             //initialize model
             await using var modelEnumerator = _modelBufferIn.GetDataAsync(stoppingToken).GetAsyncEnumerator(stoppingToken);
             await modelEnumerator.MoveNextAsync();
+            var currentModelData = modelEnumerator.Current;
 
-            //initialize model to first incoming model before entering prediction loop
-            using (Py.GIL())
-            {
-                _model = BaseModel.ModelFromJson(File.ReadAllText(Path.Combine(modelEnumerator.Current.ModelDirectory, "model.json")));
-                _model.LoadWeight(Path.Combine(modelEnumerator.Current.ModelDirectory, "weights.h5"));
-            }
+            Console.WriteLine($"Got first available model info. For interval: {currentModelData.Interval}");
+
+            AddOrUpdateModels(currentModelData.Interval, currentModelData);
+
+            Console.WriteLine($"Completed loading model instance and weights for interval: {currentModelData.Interval}");
 
             //kick off await for next incoming model
             _nextModelTask = Task.Run(async () => { await modelEnumerator.MoveNextAsync(); return modelEnumerator.Current; });
@@ -80,24 +94,32 @@ namespace CryptoDataIngest.Workers
                     if (stoppingToken.IsCancellationRequested)
                         break;
 
+                    Console.WriteLine($"Got datapoint for interval: {dataPoint.Item1}");
+
+                    //skip loop if received data for time interval we don't have a model for
+                    if (_models.ContainsKey(dataPoint.Item1))
+                        continue;
+
                     //check if next model is available
                     if (_nextModelTask.IsCompleted)
                     {
-                        string nextModelDir = _nextModelTask.Result.ModelDirectory;
+                        var nextModelData = _nextModelTask.Result;
 
-                        //replace existing if new model available
-                        using (Py.GIL())
-                        {
-                            _model = BaseModel.ModelFromJson(File.ReadAllText(Path.Combine(nextModelDir, "model.json")));
-                            _model.LoadWeight(Path.Combine(nextModelDir, "weights.h5"));
-                        }
+                        Console.WriteLine($"Next model info available for interval: {nextModelData.Interval}. Loading instance and weights...");
+
+                        AddOrUpdateModels(nextModelData.Interval, nextModelData);
+
+                        Console.WriteLine($"Completed loading wieghts for interval: {nextModelData.Interval}. Replacing old model with this one");
 
                         //start getting next model
                         _nextModelTask = Task.Run(async () => { await modelEnumerator.MoveNextAsync(); return modelEnumerator.Current; });
                     }
 
+                    if (!_lookBackQueues.TryGetValue(dataPoint.Item1, out var lookBackQueue))
+                        throw new ArgumentException($"Failed to process data point, time interval not configured: {dataPoint.Item1}");
+
                     //add to batch
-                    lookBackQueue.Enqueue(dataPoint);
+                    lookBackQueue.Enqueue(dataPoint.Item2);
 
                     //process if queue reaches batch size
                     if (lookBackQueue.Count == _lookBackBatchSize)
@@ -121,29 +143,47 @@ namespace CryptoDataIngest.Workers
                             index++;
                         }
 
+                        var currentInterval = dataPoint.Item1;
+
                         //get minmax scaler
-                        var minMaxData = JsonConvert.DeserializeObject<MinMaxModel>(File.ReadAllText(_config.MinMaxDataPath));
+                        var minMaxData = JsonConvert.DeserializeObject<MinMaxModel>(File.ReadAllText(Path.Combine(_config.MinMaxDataDirectory, $"minmax_{currentInterval}.json")));
                         var scaler = _scalerProv.Get(minMaxData);
 
+                        if (!_models.TryGetValue(currentInterval, out var targetModel))
+                            throw new ArgumentException($"Failed to get model for interval: {currentInterval}. No model found for that interval type");
+
+                        float closePrediction;
+
+                        Console.WriteLine($"Predicting next timestep for interval: {currentInterval}");
+
                         //predict and get last column, i.e. the close price
+                        lock(_config.PythonLock)
                         using (Py.GIL())
                         {
-                            var predictions = _model.Predict(new NDarray(inputDataArray));
+                            var model = BaseModel.ModelFromJson(File.ReadAllText(Path.Combine(targetModel.ModelDirectory, "model.json")));
+                            model.LoadWeight(Path.Combine(targetModel.ModelDirectory, "weights.h5"));
+
+                            var predictions = model.Predict(new NDarray(inputDataArray));
                             var predictionData = predictions.GetData<float>();
-                            var closePrediction = predictionData[4];
-                            //calculate the unix time associated with prediction
-                            long predictionUnixTime = localLookBack.Last().date + (int)_timeInterval;
-
-                            var denormalizedClose = scaler.DeScaleClose(new List<float>() { closePrediction }).Single();
-
-                            var closePredictionModel = new PredictedClose(denormalizedClose, predictionUnixTime);
-
-                            //post to out buffer
-                            _bufferOut.AddData(closePredictionModel, stoppingToken);
-
-                            //write to file
-                            await _persistence.WriteToDirectoryAsync(_outputDir, new List<PredictedClose>() { closePredictionModel }, stoppingToken);
+                            closePrediction = predictionData[4];
                         }
+
+                        //calculate the unix time associated with prediction
+                        long predictionUnixTime = localLookBack.Last().date + (int)currentInterval;
+                        var denormalizedClose = scaler.DeScaleClose(new List<float>() { closePrediction }).Single();
+                        var closePredictionModel = new PredictedClose(denormalizedClose, predictionUnixTime, currentInterval);
+
+                        Console.WriteLine($"Completed prediction for next timestep for interval: {currentInterval}. Posting to out buffer...");
+
+                        //post to out buffer
+                        _bufferOut.AddData(closePredictionModel, stoppingToken);
+
+                        Console.WriteLine($"Completed posting to out buffer for interval: {currentInterval}. Persisting to file...");
+
+                        //write to file
+                        await _persistence.WriteToDirectoryAsync(_outputDir, new List<PredictedClose>() { closePredictionModel }, stoppingToken);
+
+                        Console.WriteLine($"Completed persisting to file for interval: {currentInterval}");
                     }
                 }
                 catch (Exception e)
@@ -172,7 +212,6 @@ namespace CryptoDataIngest.Workers
                 // Dispose managed state (managed objects).
                 _bufferIn.Dispose();
                 _bufferOut.Dispose();
-                _model.Dispose();
             }
 
             _disposed = true;
