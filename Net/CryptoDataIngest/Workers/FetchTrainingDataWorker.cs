@@ -30,6 +30,7 @@ namespace CryptoDataIngest.Workers
         private readonly IMinMaxSelectorProvider _minMaxSelectorProv;
         private readonly IModelSourceRepo _modelSourceRepo;
         private const int _batchSize = 500;
+        private readonly ConsoleColor _consoleColor = ConsoleColor.Cyan;
         private bool _disposed;
 
         public FetchTrainingDataWorker(
@@ -64,7 +65,7 @@ namespace CryptoDataIngest.Workers
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                Console.WriteLine($"Starting to fetch training data for date range: {_dataTimeRanges.First().start} TO {_dataTimeRanges.Last().end}");
+                ColorConsole.WriteLine($"Starting to fetch training data for date range: {_dataTimeRanges.First().start} TO {_dataTimeRanges.Last().end}", _consoleColor);
                 //create root data dir if doesn't exist
                 Directory.CreateDirectory(_outputDir);
 
@@ -102,7 +103,7 @@ namespace CryptoDataIngest.Workers
 
                         Directory.CreateDirectory(_config.MinMaxDataDirectory);
 
-                        Console.WriteLine($"Starting to get data for time interval: {interval}");
+                        ColorConsole.WriteLine($"Starting to get data for time interval: {interval}", _consoleColor);
                         var rawData = new List<OhlcRecordBase>();
 
                         foreach (var (start, end) in _dataTimeRanges)
@@ -120,7 +121,7 @@ namespace CryptoDataIngest.Workers
                             if (hasLeftovers)
                                 nBatches++;
 
-                            Console.WriteLine($"Incoming training data split into: {nBatches} batches");
+                            ColorConsole.WriteLine($"Incoming training data split into: {nBatches} batches", _consoleColor);
 
                             for (int i = 0; i < nBatches; i++)
                             {
@@ -135,16 +136,16 @@ namespace CryptoDataIngest.Workers
                                     rawData.Add(dataPoint);
                                 }
 
-                                Console.WriteLine($"Completed batch: {i}");
+                                ColorConsole.WriteLine($"Completed batch: {i}", _consoleColor);
                             }
                         }
 
-                        Console.WriteLine($"Completed fetching all training data for interval: {interval}. Writing to outgoing buffer..");
+                        ColorConsole.WriteLine($"Completed fetching all training data for interval: {interval}. Writing to outgoing buffer..", _consoleColor);
 
                         //write batch of data to out buffer
                         _bufferOut.AddData(new OhlcRecordBaseBatch(rawData, interval), stoppingToken);
 
-                        Console.WriteLine($"Completed writing to outgoing buffer for interval: {interval}. Persisting data..");
+                        ColorConsole.WriteLine($"Completed writing to outgoing buffer for interval: {interval}. Persisting data..", _consoleColor);
 
                         //format/supplement data
                         var formattedData =
@@ -155,12 +156,12 @@ namespace CryptoDataIngest.Workers
                         //write batch of new data to file. Create new file every day
                         await File.WriteAllTextAsync(Path.Combine(_outputPath, $"training_{interval}.csv"), formattedData, stoppingToken);
 
-                        Console.WriteLine($"Completed persisting data for interval: {interval}. Persisting min max data..");
+                        ColorConsole.WriteLine($"Completed persisting data for interval: {interval}. Persisting min max data..", _consoleColor);
 
                         //persist min-max data
                         await File.WriteAllTextAsync(minMaxPath, JsonConvert.SerializeObject(minMaxSelector.GetCurrentMinMax()), stoppingToken);
 
-                        Console.WriteLine($"Completed persisting min max data for interval: {interval}.");
+                        ColorConsole.WriteLine($"Completed persisting min max data for interval: {interval}.", _consoleColor);
                     }
 
                 }
