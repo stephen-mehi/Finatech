@@ -79,21 +79,21 @@ namespace CryptoDataIngest.Workers
                     if (targetQueue.Count == _lookBackBatchSize)
                     {
                         var currentInterval = data.Item1;
-                        ColorConsole.WriteLine($"Starting to pre-process for interval: {currentInterval}", _consoleColor);
+                        ColorConsole.WriteLineWithTimestamp($"Starting to pre-process for interval: {currentInterval}", _consoleColor);
                         //copy queue locally
                         var localLookBack = targetQueue.ToList();
                         //scale
                         var scaledData = scaler.Scale(localLookBack).ToList();
-                        ColorConsole.WriteLine($"Completed pre-process scaling for interval: {currentInterval}. Posting to out buffer...", _consoleColor);
+                        ColorConsole.WriteLineWithTimestamp($"Completed pre-process scaling for interval: {currentInterval}. Posting to out buffer...", _consoleColor);
 
                         //post to buffer
                         foreach (var item in scaledData)
                             _bufferOut.AddData((currentInterval, item), stoppingToken);
-                        ColorConsole.WriteLine($"Completed posting to out buffer for interval: {currentInterval}. Persisting to file...", _consoleColor);
+                        ColorConsole.WriteLineWithTimestamp($"Completed posting to out buffer for interval: {currentInterval}. Persisting to file...", _consoleColor);
 
                         //write to file
                         await _persistence.WriteToDirectoryAsync(_outputDir, scaledData, stoppingToken);
-                        ColorConsole.WriteLine($"Completed persisting to file for interval: {currentInterval}", _consoleColor);
+                        ColorConsole.WriteLineWithTimestamp($"Completed persisting to file for interval: {currentInterval}", _consoleColor);
 
                         //remove one for sliding window
                         targetQueue.Dequeue();

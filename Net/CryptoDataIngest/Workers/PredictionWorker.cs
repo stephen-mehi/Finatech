@@ -73,18 +73,18 @@ namespace CryptoDataIngest.Workers
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            ColorConsole.WriteLine($"Waiting for first model info to be available in order to perform predictions..", _consoleColor);
+            ColorConsole.WriteLineWithTimestamp($"Waiting for first model info to be available in order to perform predictions..", _consoleColor);
 
             //initialize model
             await using var modelEnumerator = _modelBufferIn.GetDataAsync(stoppingToken).GetAsyncEnumerator(stoppingToken);
             await modelEnumerator.MoveNextAsync();
             var currentModelData = modelEnumerator.Current;
 
-            ColorConsole.WriteLine($"Got first available model info. For interval: {currentModelData.Interval}", _consoleColor);
+            ColorConsole.WriteLineWithTimestamp($"Got first available model info. For interval: {currentModelData.Interval}", _consoleColor);
 
             AddOrUpdateModels(currentModelData.Interval, currentModelData);
 
-            ColorConsole.WriteLine($"Completed loading model instance and weights for interval: {currentModelData.Interval}", _consoleColor);
+            ColorConsole.WriteLineWithTimestamp($"Completed loading model instance and weights for interval: {currentModelData.Interval}", _consoleColor);
 
             //kick off await for next incoming model
             _nextModelTask = Task.Run(async () => { await modelEnumerator.MoveNextAsync(); return modelEnumerator.Current; });
@@ -96,7 +96,7 @@ namespace CryptoDataIngest.Workers
                     if (stoppingToken.IsCancellationRequested)
                         break;
 
-                    ColorConsole.WriteLine($"Got datapoint for interval: {dataPoint.Item1}", _consoleColor);
+                    ColorConsole.WriteLineWithTimestamp($"Got datapoint for interval: {dataPoint.Item1}", _consoleColor);
 
                     //skip loop if received data for time interval we don't have a model for
                     if (_models.ContainsKey(dataPoint.Item1))
@@ -107,11 +107,11 @@ namespace CryptoDataIngest.Workers
                     {
                         var nextModelData = _nextModelTask.Result;
 
-                        ColorConsole.WriteLine($"Next model info available for interval: {nextModelData.Interval}. Loading instance and weights...", _consoleColor);
+                        ColorConsole.WriteLineWithTimestamp($"Next model info available for interval: {nextModelData.Interval}. Loading instance and weights...", _consoleColor);
 
                         AddOrUpdateModels(nextModelData.Interval, nextModelData);
 
-                        ColorConsole.WriteLine($"Completed loading wieghts for interval: {nextModelData.Interval}. Replacing old model with this one", _consoleColor);
+                        ColorConsole.WriteLineWithTimestamp($"Completed loading wieghts for interval: {nextModelData.Interval}. Replacing old model with this one", _consoleColor);
 
                         //start getting next model
                         _nextModelTask = Task.Run(async () => { await modelEnumerator.MoveNextAsync(); return modelEnumerator.Current; });
@@ -156,7 +156,7 @@ namespace CryptoDataIngest.Workers
 
                         float closePrediction;
 
-                        ColorConsole.WriteLine($"Predicting next timestep for interval: {currentInterval}", _consoleColor);
+                        ColorConsole.WriteLineWithTimestamp($"Predicting next timestep for interval: {currentInterval}", _consoleColor);
 
                         //predict and get last column, i.e. the close price
                         lock(_config.PythonLock)
@@ -175,17 +175,17 @@ namespace CryptoDataIngest.Workers
                         var denormalizedClose = scaler.DeScaleClose(new List<float>() { closePrediction }).Single();
                         var closePredictionModel = new PredictedClose(denormalizedClose, predictionUnixTime, currentInterval);
 
-                        ColorConsole.WriteLine($"Completed prediction for next timestep for interval: {currentInterval}. Posting to out buffer...", _consoleColor);
+                        ColorConsole.WriteLineWithTimestamp($"Completed prediction for next timestep for interval: {currentInterval}. Posting to out buffer...", _consoleColor);
 
                         //post to out buffer
                         _bufferOut.AddData(closePredictionModel, stoppingToken);
 
-                        ColorConsole.WriteLine($"Completed posting to out buffer for interval: {currentInterval}. Persisting to file...", _consoleColor);
+                        ColorConsole.WriteLineWithTimestamp($"Completed posting to out buffer for interval: {currentInterval}. Persisting to file...", _consoleColor);
 
                         //write to file
                         await _persistence.WriteToDirectoryAsync(_outputDir, new List<PredictedClose>() { closePredictionModel }, stoppingToken);
 
-                        ColorConsole.WriteLine($"Completed persisting to file for interval: {currentInterval}", _consoleColor);
+                        ColorConsole.WriteLineWithTimestamp($"Completed persisting to file for interval: {currentInterval}", _consoleColor);
                     }
                 }
                 catch (Exception e)
