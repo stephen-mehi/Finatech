@@ -28,6 +28,7 @@ namespace CryptoDataIngest.Workers
         private readonly IMinMaxScalerProvider _scalerProv;
         private readonly IDataConvolve _convolver;
         private readonly GlobalConfiguration _config;
+        private readonly ConsoleColor _consoleColor = ConsoleColor.Yellow;
         private bool _disposed;
 
         public ModelTrainerWorker(
@@ -52,12 +53,12 @@ namespace CryptoDataIngest.Workers
         {
             Directory.CreateDirectory(_config.ModelDirectory);
 
-            Console.WriteLine($"Waiting for data batch in order to start training models. ");
+            ColorConsole.WriteLine($"Waiting for data batch in order to start training models. ", _consoleColor);
 
             //pull all data in
             await foreach (var dataBatch in _bufferIn.GetDataAsync(ct))
             {
-                Console.WriteLine($"Starting to train model for interval: {dataBatch.Interval}");
+                ColorConsole.WriteLine($"Starting to train model for interval: {dataBatch.Interval}", _consoleColor);
 
                 try
                 {
@@ -72,7 +73,7 @@ namespace CryptoDataIngest.Workers
 
                     //get scaler
                     var minMaxModel = minMaxSelector.GetCurrentMinMax();
-                    Console.WriteLine($"Scaling data for interval: {dataBatch.Interval}");
+                    ColorConsole.WriteLine($"Scaling data for interval: {dataBatch.Interval}", _consoleColor);
 
                     var scaler = _scalerProv.Get(minMaxModel);
 
@@ -120,7 +121,7 @@ namespace CryptoDataIngest.Workers
 
                         model.Compile(loss: hParams.LossFunction, optimizer: hParams.Optimizer, metrics: _config.HyperParams.Metrics.ToArray());
 
-                        Console.WriteLine($"Starting to train for interval: {dataBatch.Interval}...");
+                        ColorConsole.WriteLine($"Starting to train for interval: {dataBatch.Interval}...", _consoleColor);
 
                         var history =
                             model.Fit(
@@ -133,9 +134,9 @@ namespace CryptoDataIngest.Workers
                                 .HistoryLogs;
 
 
-                        Console.WriteLine($"Completed training for interval: {dataBatch.Interval}. ");
+                        ColorConsole.WriteLine($"Completed training for interval: {dataBatch.Interval}. ", _consoleColor);
 
-                        Console.WriteLine($"Saving weights for interval: {dataBatch.Interval}...");
+                        ColorConsole.WriteLine($"Saving weights for interval: {dataBatch.Interval}...", _consoleColor);
 
                         //output history, weights, and model
                         model.SaveWeight(Path.Combine(outputDir, $"weights.h5"));
@@ -145,7 +146,7 @@ namespace CryptoDataIngest.Workers
                         modelJson = model.ToJson();
                     }
 
-                    Console.WriteLine($"Completed saving weights for interval: {dataBatch.Interval} Saving model, metrics, and hyper params...");
+                    ColorConsole.WriteLine($"Completed saving weights for interval: {dataBatch.Interval} Saving model, metrics, and hyper params...", _consoleColor);
 
                     //File.WriteAllText(Path.Combine(outputDir, "weights.json"), JsonConvert.SerializeObject(weights));
                     var metrics = new { LastMetricMap = lastMetrics, MetricsMap = metricsMap };
@@ -153,14 +154,14 @@ namespace CryptoDataIngest.Workers
                     File.WriteAllText(Path.Combine(outputDir, $"model.json"), modelJson);
                     File.WriteAllText(Path.Combine(outputDir, $"HyperParameters.json"), JsonConvert.SerializeObject(hParams));
 
-                    Console.WriteLine($"Completed saving model, metrics, and hyper params for interval: {dataBatch.Interval} Posting model to out buffer...");
+                    ColorConsole.WriteLine($"Completed saving model, metrics, and hyper params for interval: {dataBatch.Interval} Posting model to out buffer...", _consoleColor);
 
-                    Console.WriteLine($"Completed saving model, metrics, and hyper params for interval: {dataBatch.Interval} Posting model to out buffer...");
+                    ColorConsole.WriteLine($"Completed saving model, metrics, and hyper params for interval: {dataBatch.Interval} Posting model to out buffer...", _consoleColor);
 
                     //write new model info to out buffer
                     _bufferOut.AddData(new ModelSource(dt, outputDir, dataBatch.Interval), ct);
 
-                    Console.WriteLine($"Completed posting model to out buffer for interval: {dataBatch.Interval}");
+                    ColorConsole.WriteLine($"Completed posting model to out buffer for interval: {dataBatch.Interval}", _consoleColor);
 
                 }
                 catch (Exception e)
