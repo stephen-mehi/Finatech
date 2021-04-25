@@ -21,5 +21,14 @@ namespace CryptoDataIngest.Models
                 Console.ResetColor();
             }
         }
+        public static void WriteLineWithTimestamp(string message, ConsoleColor messageColor = default(ConsoleColor))
+        {
+            lock (locker)
+            {
+                Console.ForegroundColor = messageColor;
+                Console.WriteLine($"{DateTime.Now} > {message}");
+                Console.ResetColor();
+            }
+        }
     }
 }

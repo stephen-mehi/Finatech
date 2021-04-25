@@ -65,7 +65,7 @@ namespace CryptoDataIngest.Workers
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                ColorConsole.WriteLine($"Starting to fetch training data for date range: {_dataTimeRanges.First().start} TO {_dataTimeRanges.Last().end}", _consoleColor);
+                ColorConsole.WriteLineWithTimestamp($"Starting to fetch training data for date range: {_dataTimeRanges.First().start} TO {_dataTimeRanges.Last().end}", _consoleColor);
                 //create root data dir if doesn't exist
                 Directory.CreateDirectory(_outputDir);
 
@@ -99,7 +99,7 @@ namespace CryptoDataIngest.Workers
                         if (File.Exists(minMaxPath))
                             File.Delete(minMaxPath);
 
-                        ColorConsole.WriteLine($"Starting to get data for time interval: {interval}", _consoleColor);
+                        ColorConsole.WriteLineWithTimestamp($"Starting to get data for time interval: {interval}", _consoleColor);
                         var rawData = new List<OhlcRecordBase>();
 
                         foreach (var (start, end) in _dataTimeRanges)
@@ -117,7 +117,7 @@ namespace CryptoDataIngest.Workers
                             if (hasLeftovers)
                                 nBatches++;
 
-                            ColorConsole.WriteLine($"Incoming training data split into: {nBatches} batches", _consoleColor);
+                            ColorConsole.WriteLineWithTimestamp($"Incoming training data split into: {nBatches} batches", _consoleColor);
 
                             for (int i = 0; i < nBatches; i++)
                             {
@@ -132,16 +132,16 @@ namespace CryptoDataIngest.Workers
                                     rawData.Add(dataPoint);
                                 }
 
-                                ColorConsole.WriteLine($"Completed batch: {i}", _consoleColor);
+                                ColorConsole.WriteLineWithTimestamp($"Completed batch: {i}", _consoleColor);
                             }
                         }
 
-                        ColorConsole.WriteLine($"Completed fetching all training data for interval: {interval}. Writing to outgoing buffer..", _consoleColor);
+                        ColorConsole.WriteLineWithTimestamp($"Completed fetching all training data for interval: {interval}. Writing to outgoing buffer..", _consoleColor);
 
                         //write batch of data to out buffer
                         _bufferOut.AddData(new OhlcRecordBaseBatch(rawData, interval), stoppingToken);
 
-                        ColorConsole.WriteLine($"Completed writing to outgoing buffer for interval: {interval}. Persisting data..", _consoleColor);
+                        ColorConsole.WriteLineWithTimestamp($"Completed writing to outgoing buffer for interval: {interval}. Persisting data..", _consoleColor);
 
                         //format/supplement data
                         var formattedData =
@@ -152,12 +152,12 @@ namespace CryptoDataIngest.Workers
                         //write batch of new data to file. Create new file every day
                         await File.WriteAllTextAsync(Path.Combine(_outputPath, $"training_{interval}.csv"), formattedData, stoppingToken);
 
-                        ColorConsole.WriteLine($"Completed persisting data for interval: {interval}. Persisting min max data..", _consoleColor);
+                        ColorConsole.WriteLineWithTimestamp($"Completed persisting data for interval: {interval}. Persisting min max data..", _consoleColor);
 
                         //persist min-max data
                         await File.WriteAllTextAsync(minMaxPath, JsonConvert.SerializeObject(minMaxSelector.GetCurrentMinMax()), stoppingToken);
 
-                        ColorConsole.WriteLine($"Completed persisting min max data for interval: {interval}.", _consoleColor);
+                        ColorConsole.WriteLineWithTimestamp($"Completed persisting min max data for interval: {interval}.", _consoleColor);
                     }
 
                 }
