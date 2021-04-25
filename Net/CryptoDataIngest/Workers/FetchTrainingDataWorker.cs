@@ -68,6 +68,8 @@ namespace CryptoDataIngest.Workers
                 //create root data dir if doesn't exist
                 Directory.CreateDirectory(_outputDir);
 
+                Directory.CreateDirectory(_config.MinMaxDataDirectory);
+
                 if (File.Exists(_outputPath))
                     File.Delete(_outputPath);
 
@@ -95,12 +97,6 @@ namespace CryptoDataIngest.Workers
                         //delete old minmax data
                         if (File.Exists(minMaxPath))
                             File.Delete(minMaxPath);
-
-                        //delete all min max data if any exists
-                        if (Directory.Exists(_config.MinMaxDataDirectory))
-                            foreach (FileInfo file in (new DirectoryInfo(_config.MinMaxDataDirectory)).GetFiles()) file.Delete();
-
-                        Directory.CreateDirectory(_config.MinMaxDataDirectory);
 
                         Console.WriteLine($"Starting to get data for time interval: {interval}");
                         var rawData = new List<OhlcRecordBase>();

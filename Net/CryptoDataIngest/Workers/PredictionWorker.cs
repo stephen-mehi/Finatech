@@ -97,7 +97,7 @@ namespace CryptoDataIngest.Workers
                     Console.WriteLine($"Got datapoint for interval: {dataPoint.Item1}");
 
                     //skip loop if received data for time interval we don't have a model for
-                    if (_models.ContainsKey(dataPoint.Item1))
+                    if (!_models.ContainsKey(dataPoint.Item1))
                         continue;
 
                     //check if next model is available
