@@ -1,13 +1,14 @@
 # install anaconda
 # https://docs.anaconda.com/anaconda/install/windows/
 
+# FOR GPU 
 # from tensorflow install guide:  https://www.tensorflow.org/install/gpu
 # check compat guide https://www.tensorflow.org/install/source#gpu
-# install cuda toolkit, drivers, and cuDNN
+# install CORRECT AND COMPATIBLE versions of cuda toolkit, drivers, and cuDNN
 # https://developer.nvidia.com/cuda-toolkit
 # https://developer.nvidia.com/cudnn
 # https://www.nvidia.com/download/index.aspx?lang=en-us
-# copy bin, include, and lib from cudNN to respective cuda tool kit  
+# copy CONTENTS from bin, include, and lib from cudNN download to respective cuda tool kit. Example location: C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.2\bin
 # restart computer
 
 
