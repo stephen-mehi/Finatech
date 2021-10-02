@@ -1,3 +1,6 @@
+# install anaconda
+# https://docs.anaconda.com/anaconda/install/windows/
+
 # from tensorflow install guide:  https://www.tensorflow.org/install/gpu
 # check compat guide https://www.tensorflow.org/install/source#gpu
 # install cuda toolkit, drivers, and cuDNN
@@ -6,8 +9,7 @@
 # https://www.nvidia.com/download/index.aspx?lang=en-us
 # copy bin, include, and lib from cudNN to respective cuda tool kit  
 # restart computer
-#install anaconda
-#https://docs.anaconda.com/anaconda/install/windows/
+
 
 # update conda in your default environment 
 conda upgrade conda
