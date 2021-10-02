@@ -6,6 +6,7 @@
 # https://www.nvidia.com/download/index.aspx?lang=en-us
 # copy bin, include, and lib from cudNN to respective cuda tool kit  
 # restart computer
+#install anaconda
 
 # update conda in your default environment 
 conda upgrade conda
